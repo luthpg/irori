@@ -1,41 +1,42 @@
 # ページ・コンポーネント設計書：Irori（イロリ）
 
 ## 1. 画面構成・ルーティング・レスポンシブ方針
-初期フェーズの最小構成として、すべての機能をダッシュボード画面に集約する。ルーム切り替え時のリアルタイム接続（WebSocket）や、データフェッチの型安全（Type-safe RPC）をスムーズに行うため、Next.jsの動的ルーティングを採用する。また、スマートフォンやタブレットからの閲覧・投稿を快適にするため、段階的縮退（Gradual Degradation）に基づいたレスポンシブ設計を行う。
+初期フェーズでは、すべての主要機能を 1 つのダッシュボード型画面に集約する。ルーム切り替え時の WebSocket 接続や、型安全なデータフェッチをスムーズに行うため、Next.js の動的ルーティングを採用する。モバイルでも使いやすいよう、段階的縮退に基づくレスポンシブ設計とする。
+
+### 1.0 技術前提
+- フロントエンド: Next.js (App Router) + Tailwind CSS v4 + shadcn/ui + @base-ui/react
+- バックエンド API: Hono + Cloudflare Workers + Type-safe RPC
+- データベース: Cloudflare D1
+- リアルタイム: WebSocket / Durable Objects
+- 命名規約: API/フロントエンドは camelCase、DB は snake_case
 
 ### 1.1 ルーティング一覧
-- **`/app`** (Home / 初期状態): 
-  - デスクトップ環境ではサイドバー（左カラム）のみアクティブ。中央・右カラムは「ルームが選択されていません」のプレースホルダーを表示。
-  - モバイル環境ではルーム一覧（サイドバー）を全画面表示し、ルームタップで各ルーム詳細へ遷移する。
-- **`/app/rooms/[roomId]`** (メインチャット画面):
-  - 指定された `/app/rooms/[roomId]` に基づき、チャットタイムラインおよび設定パネルを動的に読み込み、WebSocketを確立する。
+- `/`: ランディングページ（LP）。サービス説明、ログイン・登録、ルーム招待リンク入力などを提供する。
+- `/app`: アプリ本体のホーム。デスクトップではサイドバーを表示し、中央・右カラムは未選択状態のプレースホルダーを表示する。モバイルではルーム一覧を優先表示する。
+- `/app/rooms/[roomId]`: 指定ルームのメインチャット画面。チャットタイムラインと設定パネルを動的に読み込み、WebSocket を接続する。
 
 ### 1.2 レスポンシブ・ブレイクポイント設計
-Tailwind CSSの標準ブレイクポイントに準拠し、画面幅に応じて3つの表示モードを切り替える。
-- **モバイル環境（`md` 未満: < 768px） / 1カラム表示**:
-  - `/app/rooms/[roomId]` 遷移時はメインチャットエリア（中央カラム）のみを全画面表示。
-  - サイドバー（左カラム）は画面左端からの「ドロワー（シート）」、設定パネル（右カラム）は画面右端からの「ドロワー（シート）」として非表示化し、ヘッダーのアイコンボタンでトグル展開する。
-- **タブレット環境（`md` 以上 `xl` 未満: 768px 〜 1279px） / 2カラム表示**:
-  - サイドバー（左カラム）とメインチャットエリア（中央カラム）を常時固定表示。
-  - 設定パネル（右カラム）のみドロワー（シート）として扱い、必要に応じて右側からスライドインさせる。
-- **デスクトップ環境（`xl` 以上: >= 1280px） / 3カラム表示**:
-  - カンプのデザイン通り、左（サイドバー）、中央（チャット）、右（設定）の3カラムすべてをデフォルト固定表示とし、任意で格納可能とする。
+Tailwind CSS の標準ブレイクポイントに準拠する。
+- モバイル（`md` 未満）: 1 カラム表示。サイドバーと設定はドロワーとして扱う。
+- タブレット（`md` 以上 `xl` 未満）: 2 カラム表示。サイドバーとチャットを固定し、設定だけドロワーにする。
+- デスクトップ（`xl` 以上）: 3 カラム表示。左・中央・右の 3 カラムを既定表示とする。
 
 ---
 
 ## 2. フロントエンド・ディレクトリ構造
-コンポーネントの再利用性とモノレポのメンテナンス性を担保するため、役割ごとに明確に分割する。
+コンポーネントの再利用性とモノレポの保守性を高めるため、役割ごとに明確に分割する。
 
 ```
 apps/frontend/
 ├── app/
 │   ├── globals.css
 │   ├── layout.tsx
-│   └── app/
-│       ├── page.tsx                 # `/app` プレースホルダーまたはモバイル用ルーム一覧
-│       └── rooms/
-│           └── [roomId]/
-│               └── page.tsx         # `/app/rooms/[roomId]` メイン画面（レスポンシブ制御ハブ）
+│   ├── page.tsx                 # `/` ランディングページ
+│   ├── app/
+│   │   ├── page.tsx             # `/app` ホーム
+│   │   └── rooms/
+│   │       └── [roomId]/
+│   │           └── page.tsx     # `/app/rooms/[roomId]` メイン画面
 ├── components/
 │   ├── chat/                    # チャット（中央カラム）関連
 │   │   ├── chat-area.tsx
@@ -58,72 +59,202 @@ apps/frontend/
 
 ---
 
-## 3. コンポーネント詳細仕様
+## 3. Storybook 形式コンポーネント設計
 
-### 3.1 ページコンポーネント
+### 3.1 `RoomPage` / `app/rooms/[roomId]/page.tsx`
+**Storybook metadata**
+- title: `App/Rooms/RoomPage`
+- component: `RoomPage`
 
-#### ① `app/rooms/[roomId]/page.tsx` (RoomPage)
-- **役割**: 特定ルームのコンテキスト管理、WebSocket接続、および画面幅に応じた3カラム配置のレスポンシブ制御。
-- **主な処理**:
-  - `client.api.v1.rooms[':roomId'].$get` によるルーム詳細およびトグル設定（`RoomSettings`）の初期フェッチ。
-  - `client.ws.rooms[':roomId'].$url` を用いた WebSocket の接続確立とイベントリスナーの登録。
-  - Tailwindのクラス（`hidden xl:block` など）を駆使し、モバイル・タブレット環境では右・左カラムを `Sheet`（ドロワー）コンポーネントの中に内包させる。
+**Args**
+- `roomId`: string
+- `roomName`: string
+- `roomSettings`: `RoomSettings`
+- `messages`: `Message[]`
+- `typingUsers`: `Array<{ id: string; name: string }>`
+- `isSidebarOpen`: boolean
+- `isSettingsOpen`: boolean
 
----
+**Stories**
+- `Default`: 3カラムデスクトップ表示、既読/タイピングオン、通常メッセージ群。
+- `Mobile`: モバイル表示、サイドバーと設定パネルがドロワーとして隠れる状態。
+- `EphemeralRoom`: `roomSettings.isEphemeralMode = true`、一時チャットが有効なルーム。
+- `TypingUsers`: タイピングインジケーターの表示を確認するストーリー。
 
-### 3.2 左カラム：サイドバー関連
-
-#### ① `components/sidebar/sidebar-container.tsx` (SidebarContainer)
-- **役割**: 左カラム全体のレイアウト構造の定義。デスクトップでは常時左端、モバイルでは左ドロワーメニューの中にそのまま埋め込まれる。
-- **配置コンポーネント**:
-  - `StatusLampPicker`
-  - `RoomList`
-  - 「フレンド追加 / ルーム作成」の導線ボタン。
-
-#### ② `components/sidebar/status-lamp-picker.tsx` (StatusLampPicker)
-- **役割**: 自身の「気配（ステータスランプ）」を切り替える。
-- **UI仕様**: 
-  - 自身のアイコン横に現在のランプ色をインライン表示。クリックするとポップオーバーが開き、「ひま（`bg-lamp-free`）」「作業中（`bg-lamp-busy`）」「離席（`bg-lamp-away`）」を選択可能。
-
-#### ③ `components/sidebar/room-list.tsx` (RoomList)
-- **役割**: 参加中のルーム一覧を縦に並べて表示。
-- **レスポンシブ挙動**: 
-  - モバイル環境でルームをタップした際は、ドロワーを自動的に閉じつつ `/app/rooms/[roomId]` へ画面遷移させる。
+**Notes**
+- WebSocket イベントは Storybook 環境ではモック化し、`onMessage` によるメッセージ追加・編集・削除を再現する。
+- レスポンシブ制御は `className` ベースでシミュレーションし、`xl:` ブレークポイント以下で `Sheet` を利用した左右ドローイングを確認する。
 
 ---
 
-### 3.3 中央カラム：チャットエリア関連
+### 3.2 サイドバー関連
 
-#### ① `components/layout/mobile-header.tsx` (MobileHeader)
-- **役割**: モバイル・タブレット環境においてのみ画面上部に常時固定（`sticky top-0`）されるヘッダー。
-- **UI仕様**:
-  - **モバイル（< 768px）**: 左端にハンバーガーアイコン（サイドバー展開用）、中央にルーム名、右端に設定アイコン（設定パネル展開用）を配置。
-  - **タブレット（768px 〜 1279px）**: 左端のハンバーガーアイコンは非表示（サイドバーが固定露出しているため）。右端の設定アイコンのみを表示。
-  - **デスクトップ（>= 1280px）**: ヘッダー全体を非表示（`hidden xl:none`）とする。
+#### `SidebarContainer` / `components/sidebar/sidebar-container.tsx`
+**Storybook metadata**
+- title: `App/Sidebar/SidebarContainer`
+- component: `SidebarContainer`
 
-#### ② `components/chat/chat-area.tsx` (ChatArea)
-- **役割**: メッセージタイムラインの描画とスクロール管理。
-- **UI仕様**: 
-  - ヘッダーおよびフッター（入力欄）の高さ変化に応じて、チャットエリアが正しく伸縮（`flex-1 overflow-y-auto`）し、モバイルのキーボード立ち上がり時にも表示が崩れないよう `svh`（Small Viewport Height）を基準に高さを設計する。
+**Args**
+- `status`: `"free" | "busy" | "away"`
+- `rooms`: `Array<{ id: string; name: string; unreadCount?: number }>`
+- `onSelectRoom`: `(roomId: string) => void`
+- `onCreateRoom`: `() => void`
+- `onInviteFriend`: `() => void`
 
-#### ③ `components/chat/message-bubble.tsx` (MessageBubble)
-- **役割**: メッセージ1件ごとのレンダリング。
-- **レスポンシブ最適化**:
-  - デスクトップ環境ではホバー時に「事後編集・削除・引用」ボタンをインライン表示するが、ホバーアクションのないモバイル環境を考慮し、メッセージ長押し（ロングタップ）またはメッセージ右端の「︋（メニューアイコン）」タップで下部からボトムシート（またはコンテキストメニュー）を展開する仕様とする。
+**Stories**
+- `Default`: ルーム一覧とステータスピッカーを含む標準表示。
+- `NoRooms`: ルーム未参加状態の資料表示。
+- `WithUnread`: 未読バッジ付きルームが並ぶ状態。
 
-#### ④ `components/chat/message-input.tsx` (MessageInput)
-- **役割**: メッセージ入力・送信および Google Picker のトリガー。
-- **UI仕様**:
-  - モバイルでの誤送信を防ぐため、モバイル環境のみテキストエリア横に明示的な「送信ボタン（紙飛行機アイコン等）」を配置。デスクトップ環境ではEnterでの送信（Shift+Enterで改行）を基本とする。
+**Notes**
+- モバイルでは `SidebarContainer` がドロワーとして表示されるため、`isOpen` などの状態を Args で切り替えて確認する。
+
+#### `StatusLampPicker` / `components/sidebar/status-lamp-picker.tsx`
+**Storybook metadata**
+- title: `App/Sidebar/StatusLampPicker`
+- component: `StatusLampPicker`
+
+**Args**
+- `value`: `"free" | "busy" | "away"`
+- `disabled`: boolean
+- `onChange`: `(value: string) => void`
+
+**Stories**
+- `Free`: `value = "free"`
+- `Busy`: `value = "busy"`
+- `Away`: `value = "away"`
+- `Disabled`: `disabled = true`
+- `PopoverOpen`: ポップオーバーが開いている状態をモック表示する場合の変種。
+
+**Notes**
+- ラベルは UI 上で `ひま / 作業中 / 離席` にマッピングし、色はそれぞれ `bg-lamp-free` / `bg-lamp-busy` / `bg-lamp-away` を使用する。
+
+#### `RoomList` / `components/sidebar/room-list.tsx`
+**Storybook metadata**
+- title: `App/Sidebar/RoomList`
+- component: `RoomList`
+
+**Args**
+- `rooms`: `Array<{ id: string; name: string; unreadCount?: number; isActive?: boolean }>`
+- `selectedRoomId`: string
+- `onSelectRoom`: `(roomId: string) => void`
+
+**Stories**
+- `Default`: 参加中ルーム一覧を表示。
+- `SelectedRoom`: 1つのルームが選択状態。
+- `WithUnreadCounts`: 未読バッジが表示されたルーム一覧。
+
+**Notes**
+- モバイルではタップ時に `onSelectRoom` が呼ばれ、ドロワー閉鎖をトリガーする設計にする。
 
 ---
 
-### 3.4 右カラム：設定パネル関連
+### 3.3 チャットエリア関連
 
-#### ① `components/settings/settings-panel.tsx` (SettingsPanel)
-- **役割**: ルームの「ノリ」をチューニングするトグルスイッチ群の提供。デスクトップでは右カラム固定、モバイル・タブレット環境では右ドロワー（シート）内に格納。
-- **UI仕様**:
-  - タッチミスを防ぐため、モバイル表示時は各トグルスイッチおよびラベルの縦幅（タップターゲット）を最低 `44px` 以上確保する。
+#### `MobileHeader` / `components/layout/mobile-header.tsx`
+**Storybook metadata**
+- title: `App/Layout/MobileHeader`
+- component: `MobileHeader`
+
+**Args**
+- `roomName`: string
+- `showSidebarButton`: boolean
+- `showSettingsButton`: boolean
+- `onOpenSidebar`: `() => void`
+- `onOpenSettings`: `() => void`
+
+**Stories**
+- `Default`: モバイル表示で両アイコンが表示される状態。
+- `Tablet`: ハンバーガーボタン非表示、設定ボタンのみ表示。
+- `Desktop`: 完全非表示（`xl:hidden`）の想定をドキュメントで確認する。
+
+**Notes**
+- Storybook では `showSidebarButton` / `showSettingsButton` の変数を切り替えることで、各ブレークポイント時の UIを確認する。
+
+#### `ChatArea` / `components/chat/chat-area.tsx`
+**Storybook metadata**
+- title: `App/Chat/ChatArea`
+- component: `ChatArea`
+
+**Args**
+- `messages`: `Message[]`
+- `isLoading`: boolean
+- `onScrollBottom`: `() => void`
+
+**Stories**
+- `Default`: 通常のチャットタイムライン。
+- `Loading`: メッセージ読み込み中のプレースホルダーを表示。
+- `LongConversation`: ロングコンテンツのスクロール挙動を検証。
+
+**Notes**
+- `flex-1 overflow-y-auto` の挙動は Storybook 上で `height` を制約して確認する。
+
+#### `MessageBubble` / `components/chat/message-bubble.tsx`
+**Storybook metadata**
+- title: `App/Chat/MessageBubble`
+- component: `MessageBubble`
+
+**Args**
+- `authorName`: string
+- `content`: string
+- `isOwnMessage`: boolean
+- `createdAt`: string
+- `isEditing`: boolean
+- `hasActions`: boolean
+- `mediaUrl?`: string
+- `replyTo?`: `{ id: string; content: string; authorName: string }`
+
+**Stories**
+- `Default`: 標準メッセージ表示。
+- `OwnMessage`: 自分のメッセージとして右寄せ表示。
+- `WithMedia`: Google Drive / Photos 共有リンクプレビュー付き。
+- `WithReply`: 引用返信付き表示。
+- `ActionMenu`: 編集・削除・引用ボタンを表示する状態。
+
+**Notes**
+- モバイルでは長押し/メニューアイコンのアクションシート、デスクトップではホバーアクションを別個に表現する。
+
+#### `MessageInput` / `components/chat/message-input.tsx`
+**Storybook metadata**
+- title: `App/Chat/MessageInput`
+- component: `MessageInput`
+
+**Args**
+- `value`: string
+- `isMobile`: boolean
+- `isSending`: boolean
+- `onSubmit`: `(content: string) => void`
+- `onOpenPicker`: `() => void`
+
+**Stories**
+- `Default`: 通常の入力フォーム。
+- `Mobile`: 送信ボタン付きのモバイル版。
+- `Sending`: 送信中のローディング状態。
+
+**Notes**
+- `isMobile` を切り替えて、Enter送信と明示的送信ボタンの表示差を検証する。
+
+---
+
+### 3.4 設定パネル関連
+
+#### `SettingsPanel` / `components/settings/settings-panel.tsx`
+**Storybook metadata**
+- title: `App/Settings/SettingsPanel`
+- component: `SettingsPanel`
+
+**Args**
+- `settings`: `RoomSettings`
+- `isAdmin`: boolean
+- `onToggleSetting`: `(key: keyof RoomSettings, value: boolean) => void`
+
+**Stories**
+- `Default`: 標準設定パネル。
+- `EphemeralEnabled`: `isEphemeralMode` が有効な状態。
+- `ReadReceiptDisabled`: `isReadVisible` がオフの状態。
+
+**Notes**
+- モバイル表示では各トグルのタップターゲットを 44px 以上に確保したレイアウトを Storybook 上で確認する。
 
 ---
 
@@ -137,7 +268,8 @@ apps/frontend/
 - **`MESSAGE_DELETE`**: `messages.filter(m => m.id !== data.id)` により画面から即座に消去。
 
 ### 4.2 未読戻し機能（Client-side Task Management）
-- ルーム一覧の各項目において、デスクトップでは「ダブルクリック / 右クリック」、モバイル環境では「左スワイプ（Swipe action）、または長押し」から「未読に戻す」を実行可能とし、ローカルストレージ等のフラグ管理によりバッジを再点灯させる。
+- ルーム一覧の各項目では、デスクトップでは右クリックまたはダブルクリック、モバイルではスワイプまたは長押しで「未読に戻す」を実行できるようにする
+- その状態はローカルストレージまたはクライアント状態で保持し、未読バッジを再表示する
 
 ---
 
