@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { upgradeWebSocket } from 'hono/cloudflare-workers';
 import { cors } from 'hono/cors';
+import rooms from './routes/rooms';
 
 const app = new Hono();
 
@@ -8,11 +9,12 @@ app.use(
   '*',
   cors({
     origin: (origin) => origin,
-    credentials: true,
+    // credentials: true,
   })
 );
 
 const routes = app
+  .get('/', (c) => c.text('ok', 200))
   .get('/api/v1', (c) => c.text('ok', 200))
 
   // ==========================================
@@ -24,19 +26,20 @@ const routes = app
   .patch('/api/v1/users/status', (c) => c.json({ success: true }))
   .get('/api/v1/friends', (c) => c.json({ friends: [] }))
 
-  .get('/api/v1/rooms', (c) => c.json({ rooms: [] }))
-  .post('/api/v1/rooms', (c) => c.json({ id: 'r1', name: '雑談囲炉裏' }, 201))
-  .get('/api/v1/rooms/:roomId', (c) =>
-    c.json({ id: c.req.param('roomId'), settings: {} })
-  )
-  .patch('/api/v1/rooms/:roomId/settings', (c) => c.json({ success: true }))
+  // .get('/api/v1/rooms', (c) => c.json({ rooms: [] }))
+  // .post('/api/v1/rooms', (c) => c.json({ id: 'r1', name: '雑談囲炉裏' }, 201))
+  // .get('/api/v1/rooms/:roomId', (c) =>
+  //   c.json({ id: c.req.param('roomId'), settings: {} })
+  // )
+  // .patch('/api/v1/rooms/:roomId/settings', (c) => c.json({ success: true }))
 
-  .get('/api/v1/rooms/:roomId/messages', (c) =>
-    c.json({ messages: [], nextCursor: null })
-  )
-  .post('/api/v1/rooms/:roomId/messages', (c) =>
-    c.json({ id: 'm1', status: 'saved' }, 201)
-  )
+  // .get('/api/v1/rooms/:roomId/messages', (c) =>
+  //   c.json({ messages: [], nextCursor: null })
+  // )
+  // .post('/api/v1/rooms/:roomId/messages', (c) =>
+  //   c.json({ id: 'm1', status: 'saved' }, 201)
+  // )
+  .route('/api/v1/rooms', rooms)
   .put('/api/v1/messages/:messageId', (c) => c.json({ success: true }))
   .delete('/api/v1/messages/:messageId', (c) => c.json({ success: true }))
 
