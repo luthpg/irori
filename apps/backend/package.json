@@ -4,19 +4,24 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
+    "tsc": "tsc --noEmit",
+    "test": "vitest run",
     "deploy": "wrangler deploy --minify",
     "db:create": "wrangler d1 create irori-db",
     "db:migrate": "wrangler d1 migrations apply irori-db --local",
-    "db:push": "wrangler d1 migrations push irori-db --local",
     "db:typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.29"
+    "hono": "^4.12.30"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260712.1",
+    "@cloudflare/workers-types": "^5.20260717.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.11.1",
     "drizzle-kit": "^0.31.10",
-    "wrangler": "^4.110.0"
+    "typescript": "~7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.112.0"
   }
 }

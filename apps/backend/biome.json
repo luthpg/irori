@@ -1,8 +1,16 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.4/schema.json",
   "root": false,
   "extends": ["../../biome.json"],
   "files": {
-    "includes": ["src/**/*"]
-  }
+    "includes": ["src/**/*", "tests/**/*"]
+  },
+  "overrides": [
+    {
+      "includes": ["tests/**/*"],
+      "linter": {
+        "enabled": false
+      }
+    }
+  ]
 }

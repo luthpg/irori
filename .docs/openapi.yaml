@@ -1,0 +1,813 @@
+openapi: 3.0.3
+info:
+  title: Irori Chat API
+  description: |
+    招待制の囲炉裏型チャットアプリ「Irori」のバックエンド REST API および WebSocket 仕様書。
+    
+    ### 認証方式
+    初期開発・ローカル検証向けに簡易認証を適用しています。
+    リクエストヘッダーに `Authorization: Bearer <userId>` を付与するか、Cookie に `userId=<userId>` を設定してください。
+    指定された `userId` がデータベースに存在しない場合、または指定がない場合、ゲストユーザー（`Guest_xxxx`）が自動生成されます。
+  version: 0.1.0
+servers:
+  - url: http://localhost:8787
+    description: ローカル開発環境 (wrangler dev)
+paths:
+  /api/v1/users/me:
+    get:
+      summary: 自身のアカウント情報の取得
+      description: ログイン中または自動生成されたゲストユーザーの情報を取得します。
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/v1/users/status:
+    patch:
+      summary: ステータスランプ（気配）の更新
+      description: 自身の作業状態（「ひま」「作業中」「離席」など）を表すステータスランプを更新します。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - statusLamp
+              properties:
+                statusLamp:
+                  $ref: '#/components/schemas/StatusLamp'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: 無効なステータス値
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/friends:
+    get:
+      summary: つながっているフレンド一覧取得
+      description: ログインユーザーのフレンド一覧を取得します。
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  friends:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+
+  /api/v1/friends/invite-code:
+    post:
+      summary: フレンド招待コードの生成
+      description: 新たに他のユーザーをフレンド追加するためのランダムな招待コードを生成します。
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 生成成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inviteCode:
+                    type: string
+                    format: uuid
+                    example: "c3b9a71a-289c-482d-a2f1-081e64906f3a"
+
+  /api/v1/friends/connect:
+    post:
+      summary: 招待コードを用いたフレンド登録
+      description: 指定された招待コードを照合し、招待者と自身をフレンドとして登録（相互接続）します。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - inviteCode
+              properties:
+                inviteCode:
+                  type: string
+                  format: uuid
+                  example: "c3b9a71a-289c-482d-a2f1-081e64906f3a"
+      responses:
+        '200':
+          description: 接続成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: 自分自身への接続などのエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 招待コードが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rooms:
+    get:
+      summary: 自分が参加しているルーム一覧の取得
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rooms:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Room'
+    post:
+      summary: 新規ルーム（囲炉裏）の作成
+      description: 新しいルームを作成し、作成者を管理者 (role=admin) として追加、デフォルト設定を作成します。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - isEphemeral
+              properties:
+                name:
+                  type: string
+                  example: "雑談囲炉裏"
+                isEphemeral:
+                  type: boolean
+                  description: trueの場合、24時間でメッセージが自動消去される一時ルームになります（作成後変更不可）。
+                  example: false
+      responses:
+        '201':
+          description: 作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '400':
+          description: ルーム名未指定などのエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rooms/{roomId}:
+    get:
+      summary: ルーム詳細と設定の取得
+      description: ルームの基本情報と現在のトグル設定を Eager Loading (1クエリ) で取得します。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetail'
+        '403':
+          description: メンバーではないためアクセス不可
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ルームが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rooms/{roomId}/settings:
+    patch:
+      summary: ルーム設定トグルの変更
+      description: 管理者 (role=admin) のみがルームの既読・タイピング表示・スレッド・メンション機能を ON/OFF 切り替えることができます。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomSettings'
+      responses:
+        '200':
+          description: 変更成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '403':
+          description: 管理者ではないため変更不可
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rooms/{roomId}/invite:
+    post:
+      summary: 特定ルームへの招待用一時トークンの生成
+      description: ルームメンバーのみが実行可能です。24時間有効なランダムトークンを生成しDBに保存します。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    format: uuid
+                    example: "9a7e6d1c-b84a-4a7b-a2f1-081e64908d1c"
+        '403':
+          description: メンバーではないため招待生成不可
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rooms/join:
+    post:
+      summary: 招待トークンを用いたルームへの新規入室
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  format: uuid
+                  example: "9a7e6d1c-b84a-4a7b-a2f1-081e64908d1c"
+      responses:
+        '200':
+          description: 入室成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: トークンが無効または期限切れ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/rooms/{roomId}/messages:
+    get:
+      summary: ルームの過去メッセージ一覧（タイムライン）取得
+      description: |
+        ルーム所属メンバーのみ取得可能です。
+        一時チャットルーム（`isEphemeral: true`）の場合は、自動的に過去24時間以内のメッセージのみにフィルタリングされます。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          description: ページネーション用のカーソル（最後に取得したメッセージの createdAt 文字列）。
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 取得件数 (最大100)
+          required: false
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  nextCursor:
+                    type: string
+                    nullable: true
+                    example: "2026-07-17T12:00:00.000Z"
+        '403':
+          description: メンバーではないためアクセス不可
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: 新規メッセージの投稿
+      description: 投稿成功時、該当ルームの Durable Object へ通信が走り、リアルタイムに接続中のクライアントへ `NEW_MESSAGE` イベントがブロードキャストされます。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  example: "今夜、囲炉裏で話しましょう"
+                mediaUrl:
+                  type: string
+                  nullable: true
+                  example: "https://drive.google.com/file/d/.../view"
+                replyToId:
+                  type: string
+                  nullable: true
+                  example: "m_12345"
+      responses:
+        '201':
+          description: 投稿成功・保存完了
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    example: "5a2f6d1c-b84a-4a7b-a2f1-081e64908d1c"
+                  status:
+                    type: string
+                    example: "saved"
+        '403':
+          description: メンバーではないため投稿不可
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/messages/{messageId}:
+    put:
+      summary: メッセージの編集
+      description: 投稿者本人のみが編集可能です。更新成功時、Durable Object 経由で接続クライアントへ `MESSAGE_EDIT` がブロードキャストされます。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  example: "編集後のメッセージ"
+      responses:
+        '200':
+          description: 編集成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '403':
+          description: 投稿者本人ではないため編集不可
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: メッセージが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: メッセージの削除（送信取り消し）
+      description: 投稿者本人、もしくはそのルームの管理者 (role=admin) のみが削除可能です。削除成功時、Durable Object 経由で接続クライアントへ `MESSAGE_DELETE` がブロードキャストされます。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 削除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '403':
+          description: 削除権限がない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: メッセージが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/media/preview:
+    post:
+      summary: 共有URLからのプレビューメタデータ取得
+      description: Google Drive共有URLなどを解析し、表示用のサムネイル previewUrl などを抽出します。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  example: "https://drive.google.com/file/d/12345/view"
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  previewUrl:
+                    type: string
+                    example: "https://drive.google.com/thumbnail?id=12345&w=800&sz=w800"
+                  width:
+                    type: integer
+                    example: 800
+                  height:
+                    type: integer
+                    example: 600
+                  mimeType:
+                    type: string
+                    example: "image/jpeg"
+                  title:
+                    type: string
+                    example: "Google Drive File"
+
+  /api/v1/webhooks/{webhookToken}:
+    post:
+      summary: Inbound Webhookによる機械的メッセージ投稿
+      description: |
+        外部システム（GitHub等）から機械的にメッセージを流し込むためのエンドポイントです。
+        `webhookToken` は該当ルーム ID の base64 エンコード文字列になります。
+        この投稿メッセージの `userId` は `null` (bot/システム扱い) になります。
+      parameters:
+        - name: webhookToken
+          in: path
+          description: base64 エンコードされた roomId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  example: "GitHub Webhook: Commit pushed to main"
+      responses:
+        '200':
+          description: 投稿成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: トークンの形式エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 該当ルームが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ws/rooms/{roomId}:
+    get:
+      summary: ルーム内 WebSocket リアルタイム双方向通信
+      description: |
+        Durable Objects を介したリアルタイム通信をホストします。
+        
+        #### 受信メッセージイベント (サーバー ➡️ クライアント)
+        - **新規メッセージ受信 (`NEW_MESSAGE`)**:
+          ```json
+          {
+            "type": "NEW_MESSAGE",
+            "data": {
+              "id": "m_999",
+              "content": "今夜焚き火囲みませんか？",
+              "mediaUrl": "https://drive.google.com/...",
+              "userId": "u_123",
+              "replyToId": null,
+              "createdAt": "2026-07-17T12:00:00.000Z"
+            }
+          }
+          ```
+        - **メッセージ編集通知 (`MESSAGE_EDIT`)**:
+          ```json
+          {
+            "type": "MESSAGE_EDIT",
+            "data": {
+              "id": "m_999",
+              "content": "編集後のテキスト",
+              "updatedAt": "2026-07-17T12:05:00.000Z"
+            }
+          }
+          ```
+        - **メッセージ削除通知 (`MESSAGE_DELETE`)**:
+          ```json
+          {
+            "type": "MESSAGE_DELETE",
+            "data": {
+              "id": "m_999"
+            }
+          }
+          ```
+        - **タイピング状態変化 (`USER_TYPING`)**:
+          ```json
+          {
+            "type": "USER_TYPING",
+            "data": {
+              "userId": "u_123",
+              "isTyping": true
+            }
+          }
+          ```
+          
+        #### 送信メッセージイベント (クライアント ➡️ サーバー)
+        - **タイピング開始時 (`TYPING_START`)**:
+          ```json
+          {
+            "type": "TYPING_START",
+            "userId": "u_123"
+          }
+          ```
+        - **タイピング終了時 (`TYPING_STOP`)**:
+          ```json
+          {
+            "type": "TYPING_STOP",
+            "userId": "u_123"
+          }
+          ```
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '101':
+          description: WebSocket プロトコルへのアップグレード成功
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 認証用の `userId` 文字列を直接設定します。
+
+  schemas:
+    StatusLamp:
+      type: string
+      enum:
+        - free
+        - busy
+        - away
+      example: free
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "u123"
+        name:
+          type: string
+          example: "Guest_e123"
+        statusLamp:
+          $ref: '#/components/schemas/StatusLamp'
+
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "8f7e6d1c-b84a-4a7b-a2f1-081e64908d1c"
+        name:
+          type: string
+          example: "囲炉裏ルーム"
+        isEphemeral:
+          type: boolean
+          example: false
+
+    RoomSettings:
+      type: object
+      properties:
+        isReadVisible:
+          type: boolean
+          description: 既読の可視化
+          example: true
+        isTypingVisible:
+          type: boolean
+          description: タイピング中表示
+          example: true
+        isThreadEnabled:
+          type: boolean
+          description: スレッド機能
+          example: true
+        isMentionEnabled:
+          type: boolean
+          description: メンション機能
+          example: true
+
+    RoomDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "8f7e6d1c-b84a-4a7b-a2f1-081e64908d1c"
+        name:
+          type: string
+          example: "囲炉裏ルーム"
+        isEphemeral:
+          type: boolean
+          example: false
+        settings:
+          $ref: '#/components/schemas/RoomSettings'
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "m_12345"
+        roomId:
+          type: string
+          format: uuid
+          example: "8f7e6d1c-b84a-4a7b-a2f1-081e64908d1c"
+        userId:
+          type: string
+          nullable: true
+          description: 投稿したユーザーのID。Webhook等のシステム投稿の場合は null になります。
+          example: "u123"
+        content:
+          type: string
+          example: "こんにちは"
+        mediaUrl:
+          type: string
+          nullable: true
+          example: "https://drive.google.com/file/d/.../view"
+        replyToId:
+          type: string
+          nullable: true
+          example: "m_10000"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-07-17T12:00:00.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-07-17T12:00:00.000Z"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Forbidden"

@@ -1,6 +1,5 @@
-node_modules/
-.next/
-dist/
-.wrangler/
 apps/frontend/public/
 apps/frontend/.next/
+node_modules/
+dist/
+.next/

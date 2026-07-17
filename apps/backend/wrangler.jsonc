@@ -28,6 +28,23 @@
       "database_id": "ad3e67f7-f032-4e20-aeff-92072345d664"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOM_SESSION",
+        "class_name": "RoomSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["RoomSession"]
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
   // "ai": {
   //   "binding": "AI"
   // },

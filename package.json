@@ -8,11 +8,12 @@
     ":b": "pnpm --filter backend",
     "dev": "pnpm --filter \"*\" --parallel dev",
     "build": "pnpm --filter \"*\" build",
+    "test": "pnpm --filter \"*\" test",
     "check": "biome check --write"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.3",
-    "wrangler": "^4.110.0"
+    "@biomejs/biome": "^2.5.4",
+    "wrangler": "^4.112.0"
   },
   "keywords": [],
   "author": "",

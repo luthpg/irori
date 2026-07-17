@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   index,
   integer,
@@ -134,5 +134,91 @@ export const ephemeralMessages = sqliteTable(
     createdAtIdx: index('idx_ephemeral_messages_created_at').on(
       table.createdAt
     ),
+  })
+);
+
+// 8. Friend Invitations
+export const friendInvitations = sqliteTable('friend_invitations', {
+  id: text('id').primaryKey(), // ランダムな一意トークン
+  inviterId: text('inviter_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  expiresAt: text('expires_at'),
+});
+
+// 9. Room Invitations
+export const roomInvitations = sqliteTable('room_invitations', {
+  id: text('id').primaryKey(), // ランダムな一意トークン
+  roomId: text('room_id')
+    .notNull()
+    .references(() => rooms.id, { onDelete: 'cascade' }),
+  inviterId: text('inviter_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  expiresAt: text('expires_at').notNull(), // ルーム招待は24時間期限必須
+});
+
+// 10. Relations Definitions
+export const usersRelations = relations(users, ({ many }) => ({
+  memberships: many(roomMembers),
+  messages: many(messages),
+  ephemeralMessages: many(ephemeralMessages),
+  friendInvitations: many(friendInvitations),
+  roomInvitations: many(roomInvitations),
+}));
+
+export const roomsRelations = relations(rooms, ({ one, many }) => ({
+  settings: one(roomSettings, {
+    fields: [rooms.id],
+    references: [roomSettings.roomId],
+  }),
+  members: many(roomMembers),
+  messages: many(messages),
+  ephemeralMessages: many(ephemeralMessages),
+  roomInvitations: many(roomInvitations),
+}));
+
+export const roomSettingsRelations = relations(roomSettings, ({ one }) => ({
+  room: one(rooms, {
+    fields: [roomSettings.roomId],
+    references: [rooms.id],
+  }),
+}));
+
+export const roomMembersRelations = relations(roomMembers, ({ one }) => ({
+  room: one(rooms, {
+    fields: [roomMembers.roomId],
+    references: [rooms.id],
+  }),
+  user: one(users, {
+    fields: [roomMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  room: one(rooms, {
+    fields: [messages.roomId],
+    references: [rooms.id],
+  }),
+  user: one(users, {
+    fields: [messages.userId],
+    references: [users.id],
+  }),
+}));
+
+export const ephemeralMessagesRelations = relations(
+  ephemeralMessages,
+  ({ one }) => ({
+    room: one(rooms, {
+      fields: [ephemeralMessages.roomId],
+      references: [rooms.id],
+    }),
+    user: one(users, {
+      fields: [ephemeralMessages.userId],
+      references: [users.id],
+    }),
   })
 );

@@ -1,74 +1,70 @@
+import { lt } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { upgradeWebSocket } from 'hono/cloudflare-workers';
 import { cors } from 'hono/cors';
+import { getDb } from './db/db';
+import * as schema from './db/schema';
+import friends from './routes/friends';
+import media from './routes/media';
+import messages from './routes/messages';
 import rooms from './routes/rooms';
+import users from './routes/users';
+import webhooks from './routes/webhooks';
 
-const app = new Hono();
+// Durable Object をエクスポート（Wrangler が検知するため）
+export { RoomSession } from './ws/RoomSession';
+
+type Bindings = {
+  irori_db: D1Database;
+  ROOM_SESSION: DurableObjectNamespace;
+};
+
+const app = new Hono<{ Bindings: Bindings }>();
 
 app.use(
   '*',
   cors({
     origin: (origin) => origin,
-    // credentials: true,
+    credentials: true,
   })
 );
 
+app.get('/', (c) => c.text('ok', 200));
+
+// ルートをマウント
 const routes = app
-  .get('/', (c) => c.text('ok', 200))
-  .get('/api/v1', (c) => c.text('ok', 200))
-
-  // ==========================================
-  // 1. HTTP エンドポイント (REST API)
-  // ==========================================
-  .get('/api/v1/users/me', (c) =>
-    c.json({ id: 'u1', name: 'luthpg', statusLamp: 'free' })
-  )
-  .patch('/api/v1/users/status', (c) => c.json({ success: true }))
-  .get('/api/v1/friends', (c) => c.json({ friends: [] }))
-
-  // .get('/api/v1/rooms', (c) => c.json({ rooms: [] }))
-  // .post('/api/v1/rooms', (c) => c.json({ id: 'r1', name: '雑談囲炉裏' }, 201))
-  // .get('/api/v1/rooms/:roomId', (c) =>
-  //   c.json({ id: c.req.param('roomId'), settings: {} })
-  // )
-  // .patch('/api/v1/rooms/:roomId/settings', (c) => c.json({ success: true }))
-
-  // .get('/api/v1/rooms/:roomId/messages', (c) =>
-  //   c.json({ messages: [], nextCursor: null })
-  // )
-  // .post('/api/v1/rooms/:roomId/messages', (c) =>
-  //   c.json({ id: 'm1', status: 'saved' }, 201)
-  // )
+  .route('/api/v1/users', users)
+  .route('/api/v1/friends', friends)
   .route('/api/v1/rooms', rooms)
-  .put('/api/v1/messages/:messageId', (c) => c.json({ success: true }))
-  .delete('/api/v1/messages/:messageId', (c) => c.json({ success: true }))
+  .route('/api/v1', messages) // messages は /api/v1/rooms/... と /api/v1/messages/... の両方を持つため
+  .route('/api/v1/media', media)
+  .route('/api/v1/webhooks', webhooks)
 
-  .post('/api/v1/webhooks/:webhookToken', (c) => c.json({ success: true }))
+  // WebSocket 接続を Durable Object にフォワードするエンドポイント
+  .get('/ws/rooms/:roomId', async (c) => {
+    const roomId = c.req.param('roomId');
+    const id = c.env.ROOM_SESSION.idFromName(roomId);
+    const stub = c.env.ROOM_SESSION.get(id);
 
-  // ==========================================
-  // 2. WebSocket エンドポイント (ルーム別の土管)
-  // ==========================================
-  // 💡 URLパラメータ（:roomId）を仕込んでおくことで、部屋ごとの接続を管理できます
-  .get(
-    '/ws/rooms/:roomId',
-    upgradeWebSocket((c) => {
-      const roomId = c.req.param('roomId');
-
-      return {
-        onMessage(event, ws) {
-          // TODO: ここでDurable Objectsに接続してブロードキャスト
-          ws.send(JSON.stringify({ type: 'ECHO', data: event.data }));
-        },
-        onClose() {
-          // console.log(`[Room: ${roomId}] 接続が切断されました`);
-        },
-        onError(err) {
-          // console.error(`[Room: ${roomId}] WebSocketエラー:`, err);
-        },
-      };
-    })
-  );
+    // Durable Object へ WebSocket 接続リクエストをフォワード
+    return stub.fetch(c.req.raw);
+  });
 
 export type AppType = typeof routes;
 
-export default app;
+// Fetch と Scheduled（一時チャット自動消滅 Cron）ハンドラをエクスポート
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: unknown, env: Bindings, _ctx: unknown) {
+    const db = getDb(env.irori_db);
+    const threshold = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      await db
+        .delete(schema.ephemeralMessages)
+        .where(lt(schema.ephemeralMessages.createdAt, threshold));
+      console.log('Successfully cleaned up expired ephemeral messages.');
+    } catch (err) {
+      console.error('Failed to cleanup ephemeral messages:', err);
+    }
+  },
+};
