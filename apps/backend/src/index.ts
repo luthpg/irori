@@ -16,9 +16,16 @@ export { RoomSession } from './ws/RoomSession';
 type Bindings = {
   irori_db: D1Database;
   ROOM_SESSION: DurableObjectNamespace;
+  FIREBASE_PROJECT_ID?: string;
+  TEST_MODE?: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+  userId: string;
+  user: typeof schema.users.$inferSelect;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use(
   '*',
@@ -28,18 +35,15 @@ app.use(
   })
 );
 
-app.get('/', (c) => c.text('ok', 200));
-
-// ルートをマウント
+// 単一のメソッドチェーンで全ルートを結合し、型推論を平坦化
 const routes = app
+  .get('/', (c) => c.text('ok', 200))
   .route('/api/v1/users', users)
   .route('/api/v1/friends', friends)
   .route('/api/v1/rooms', rooms)
-  .route('/api/v1', messages) // messages は /api/v1/rooms/... と /api/v1/messages/... の両方を持つため
+  .route('/api/v1', messages)
   .route('/api/v1/media', media)
   .route('/api/v1/webhooks', webhooks)
-
-  // WebSocket 接続を Durable Object にフォワードするエンドポイント
   .get('/ws/rooms/:roomId', async (c) => {
     const roomId = c.req.param('roomId');
     const id = c.env.ROOM_SESSION.idFromName(roomId);

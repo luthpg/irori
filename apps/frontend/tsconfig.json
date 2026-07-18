@@ -18,6 +18,7 @@
         "name": "next"
       }
     ],
+    "types": ["@cloudflare/workers-types"],
     "paths": {
       "@/*": ["./*"]
     }
@@ -28,7 +29,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    "../backend/worker-configuration.d.ts"
   ],
   "exclude": ["node_modules"]
 }

@@ -43,7 +43,10 @@ describe('Irori Backend API Tests', () => {
   });
 
   it('should update user statusLamp', async () => {
-    const headers = { Authorization: 'Bearer test-user' };
+    const headers = {
+      Authorization: 'Bearer test-user',
+      'Content-Type': 'application/json',
+    };
     const patchRes = await app.fetch(
       new Request('http://localhost/api/v1/users/status', {
         method: 'PATCH',
@@ -64,8 +67,14 @@ describe('Irori Backend API Tests', () => {
 
   // 2. Friends Connection Tests
   it('should create invite code and connect friends', async () => {
-    const userAHeaders = { Authorization: 'Bearer user-a' };
-    const userBHeaders = { Authorization: 'Bearer user-b' };
+    const userAHeaders = {
+      Authorization: 'Bearer user-a',
+      'Content-Type': 'application/json',
+    };
+    const userBHeaders = {
+      Authorization: 'Bearer user-b',
+      'Content-Type': 'application/json',
+    };
 
     // Bのフレンド一覧 (初期状態は空)
     const listRes1 = await app.fetch(
@@ -111,8 +120,14 @@ describe('Irori Backend API Tests', () => {
 
   // 3. Rooms & Settings Tests
   it('should create room, join room, and modify settings', async () => {
-    const userA = { Authorization: 'Bearer user-a' };
-    const userB = { Authorization: 'Bearer user-b' };
+    const userA = {
+      Authorization: 'Bearer user-a',
+      'Content-Type': 'application/json',
+    };
+    const userB = {
+      Authorization: 'Bearer user-b',
+      'Content-Type': 'application/json',
+    };
 
     // ルーム作成
     const createRes = await app.fetch(
@@ -203,7 +218,10 @@ describe('Irori Backend API Tests', () => {
 
   // 4. Messages (Normal/Ephemeral) & Webhooks Tests
   it('should post messages in normal and ephemeral rooms and trigger broadcast', async () => {
-    const userA = { Authorization: 'Bearer user-a' };
+    const userA = {
+      Authorization: 'Bearer user-a',
+      'Content-Type': 'application/json',
+    };
 
     // 通常ルーム作成
     const r1Res = await app.fetch(

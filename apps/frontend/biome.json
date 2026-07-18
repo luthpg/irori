@@ -3,7 +3,14 @@
   "root": false,
   "extends": ["../../biome.json"],
   "files": {
-    "includes": ["**", "!node_modules", "!.next", "!dist", "!build"]
+    "includes": [
+      "**",
+      "!node_modules",
+      "!.next",
+      "!dist",
+      "!build",
+      "!coverage"
+    ]
   },
   "linter": {
     "rules": {
@@ -16,6 +23,14 @@
       "react": "recommended"
     }
   },
+  "overrides": [
+    {
+      "includes": ["components/ui/**/*"],
+      "linter": {
+        "enabled": false
+      }
+    }
+  ],
   "css": {
     "parser": {
       "tailwindDirectives": true

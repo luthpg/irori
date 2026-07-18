@@ -6,12 +6,19 @@ import * as schema from '../db/schema';
 type Bindings = {
   irori_db: D1Database;
   ROOM_SESSION: DurableObjectNamespace;
+  FIREBASE_PROJECT_ID?: string;
+  TEST_MODE?: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+  userId: string;
+  user: typeof schema.users.$inferSelect;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // 注意: Webhook は外部からの呼び出しであるため、通常の authMiddleware はマウントしない
-app.post('/:webhookToken', async (c) => {
+const routes = app.post('/:webhookToken', async (c) => {
   const webhookToken = c.req.param('webhookToken');
   const { content } = await c.req.json<{ content: string }>();
 
@@ -92,4 +99,4 @@ app.post('/:webhookToken', async (c) => {
   return c.json({ success: true });
 });
 
-export default app;
+export default routes;

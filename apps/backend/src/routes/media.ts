@@ -1,16 +1,25 @@
 import { Hono } from 'hono';
+import type * as schema from '../db/schema';
 import { authMiddleware } from '../middleware/auth';
 
 type Bindings = {
   irori_db: D1Database;
+  ROOM_SESSION: DurableObjectNamespace;
+  FIREBASE_PROJECT_ID?: string;
+  TEST_MODE?: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+  userId: string;
+  user: typeof schema.users.$inferSelect;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // 認証ミドルウェア適用
 app.use('*', authMiddleware());
 
-app.post('/preview', async (c) => {
+const routes = app.post('/preview', async (c) => {
   const { url } = await c.req.json<{ url: string }>();
 
   if (!url) {
@@ -57,4 +66,4 @@ app.post('/preview', async (c) => {
   });
 });
 
-export default app;
+export default routes;

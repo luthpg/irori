@@ -9,6 +9,7 @@
     "dev": "pnpm --filter \"*\" --parallel dev",
     "build": "pnpm --filter \"*\" build",
     "test": "pnpm --filter \"*\" test",
+    "tsc": "pnpm --filter \"*\" tsc",
     "check": "biome check --write"
   },
   "devDependencies": {
