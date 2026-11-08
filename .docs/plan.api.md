@@ -1,208 +1,242 @@
-# Irori（イロリ）API設計書
+# Irori（イロリ）v1 API ＆ リアルタイム通信設計書
 
 ## 1. 概要
 
-本設計書は、Irori の MVP 実装に向けた API 仕様書です。Next.js フロントエンドと Hono バックエンドをモノレポで構成し、HTTP API と WebSocket API を明確に分離して設計します。Hono の Type-safe RPC を前提に、フロントエンドとバックエンド間の型のズレを減らす方針とします。
-フロントエンド側では、この RPC クライアントを TanStack Query と結合して非同期データを管理します。
+本設計書は、Irori v1 の **React Router v7 + Cloudflare Durable Objects（SQLite内蔵）シングルパッケージ構成** における API およびリアルタイム通信の仕様書です。
+
+従来の「外部 REST API ＋ 個別 WebSocket サーバー」の二重管理を廃止し、以下の 3 つの通信方式を統合して運用します。
+
+1. **React Router v7 Loader / Action**:
+   画面遷移、SSR、データ変更、および `clientLoader` / `clientAction` によるクライアントサイド透過暗号処理。
+2. **Cloudflare Durable Objects WebSocket (Hibernatable)**:
+   スペース内の超低遅延リアルタイム通信（チャット配信、リアクション、タイピング気配、空気感トグル即時反映）。
+3. **Workers Native RPC**:
+   エッジワーカー（React Router 実行環境）から `SpaceActor` / `UserActor` への型安全な内部プロシージャ呼び出し。
 
 ---
 
-## 2. ルーティング基本方針
+## 2. 通信アーキテクチャ ＆ ルーティング基本方針
 
-- HTTP API はすべて `/api/v1` プレフィックスを付与する
-- WebSocket API は `/ws` 直下に配置し、HTTP ルートとの混ざりを避ける
-- メディアのバイナリ自体はアップロードしない。Google Picker で取得した共有 URL 文字列のみを送受信する
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Client (Browser / PWA)                                                 │
+│  ├── clientLoader  : 初期データ取得 ＆ IndexedDB 秘密鍵による一括自動復号     │
+│  ├── clientAction  : 送信前暗号化 (formData から平文消去 ＆ 暗号文差し替え)     │
+│  └── useWebSocket  : SpaceActor との常時接続 (イベント駆動型リアルタイム復号)    │
+└────────────────────────────────────────────────────────────────────────┘
+         │ (HTTP GET/POST)                               │ (Direct WebSocket)
+         ▼                                               ▼
+┌───────────────────────────────┐               ┌────────────────────────┐
+│ React Router Loader / Action  │               │ SpaceActor (DO)        │
+│ (Cloudflare Worker SSR)       │──Native RPC──▶│ ・内蔵 SQLite (Drizzle) │
+│ ・Auth Guard & セッション検証    │               │ ・Hibernatable WS 配信  │
+│ ・暗号文とボールトのみ中継       │               │ ・Alarm API (自動消滅)  │
+└───────────────────────────────┘               └────────────────────────┘
+```
 
----
-
-## 3. APIエンドポイント一覧
-
-| カテゴリ | メソッド | パス | 概要 | リクエスト (Body / Query) | レスポンス (JSON) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **ユーザー** | GET | `/api/v1/users/me` | 自身のプロフィール情報取得 | なし | `{ id: string, name: string, statusLamp: "free" \| "busy" \| "away" }` |
-| **ユーザー** | PATCH | `/api/v1/users/status` | ステータスランプ（気配）の更新 | **Body**: `{ statusLamp: "free" \| "busy" \| "away" }` | `{ success: boolean }` |
-| **フレンド** | GET | `/api/v1/friends` | つながっているフレンド一覧取得 | なし | `{ friends: Array<{ id: string, name: string, statusLamp: string }> }` |
-| **フレンド** | POST | `/api/v1/friends/invite-code` | 招待リンク・QRコード用の固有コード生成 | なし | `{ inviteCode: string }` |
-| **フレンド** | POST | `/api/v1/friends/connect` | 招待コードを用いたフレンド登録 | **Body**: `{ inviteCode: string }` | `{ success: boolean }` |
-| **ルーム** | GET | `/api/v1/rooms` | 自分が参加しているルーム一覧取得 | なし | `{ rooms: Array<{ id: string, name: string, isEphemeral: boolean }> }` |
-| **ルーム** | POST | `/api/v1/rooms` | 新しいルーム（囲炉裏）の作成 | **Body**: `{ name: string, isEphemeral: boolean }` | `{ id: string, name: string, isEphemeral: boolean }` |
-| **ルーム** | GET | `/api/v1/rooms/:roomId` | 特定ルームの詳細およびトグル設定の取得 | なし | `{ id: string, name: string, isEphemeral: boolean, settings: RoomSettings }` |
-| **ルーム** | PATCH | `/api/v1/rooms/:roomId/settings` | ルーム機能のトグル（ON/OFF）切り替え | **Body**: `Partial<RoomSettings>` (右記参照) | `{ success: boolean }` |
-| **ルーム** | POST | `/api/v1/rooms/:roomId/invite` | 特定ルームへの招待用一時トークン生成 | なし | `{ token: string }` |
-| **ルーム** | POST | `/api/v1/rooms/join` | 招待トークンを用いたルームへの新規入室 | **Body**: `{ token: string }` | `{ success: boolean }` |
-| **メッセージ**| GET | `/api/v1/rooms/:roomId/messages` | 過去のメッセージ一覧取得（※裏でテーブル判定） | **Query**: `?cursor=string&limit=number` | `{ messages: Message[], nextCursor: string \| null }` |
-| **メッセージ**| POST | `/api/v1/rooms/:roomId/messages` | 新規メッセージの投稿（※裏でテーブル判定） | **Body**: `{ content: string, mediaUrl?: string, replyToId?: string }` | `{ id: string, status: "saved" }` |
-| **メディア** | POST | `/api/v1/media/preview` | Google Drive / Photos 共有URLから表示用プレビュー情報を取得 | **Body**: `{ url: string }` | `{ previewUrl: string, width: number, height: number, mimeType: string, title?: string }` |
-| **メッセージ**| PUT | `/api/v1/messages/:messageId` | 送信済みメッセージの事後編集 | **Body**: `{ content: string }` | `{ success: boolean }` |
-| **メッセージ**| DELETE | `/api/v1/messages/:messageId` | メッセージの送信取り消し（完全削除） | なし | `{ success: boolean }` |
-| **外部連携** | POST | `/api/v1/webhooks/:webhookToken` | 外部（GitHub 等）からの機械的メッセージ投稿 | **Body**: `{ content: string }` | `{ success: boolean }` |
-| **リアルタイム**| WS | `/ws/rooms/:roomId` | ルーム内のリアルタイム双方向通信 | JSON（詳細は後述） | JSON（詳細は後述） |
-
-## 3.4 画像プレビューAPI
-
-- `/api/v1/media/preview` は Google Drive / Photos の共有 URL を受け取り、チャット画面で表示可能なプレビュー画像 URL を返す。
-- 画像の実体は引き続き Google 側に保持し、Irori 側ではメタデータのみを扱う。
-
-## 型・命名規約
-
-- API（HTTP / WebSocket）およびフロントエンド側では camelCase を採用します（例: `isReadVisible`）。
-- データベースやストレージ層では snake_case を採用します（例: `is_read_visible`）。変換は ORM/データアクセス層で行ってください。
-
-> **`RoomSettings` オブジェクトの型定義:**
->
-> ```typescript
-> type RoomSettings = {
->   isReadVisible: boolean;      // 既読の可視化
->   isTypingVisible: boolean;    // タイピング中表示
->   isThreadEnabled: boolean;    // スレッド機能
->   isMentionEnabled: boolean;   // メンション機能
-> }
-> ```
+* **E2EE の原則**:
+  * サーバー（Worker / Durable Objects）には、メッセージ本文、スレッド、添付メディア、ワークフロー内容、プライベートメモの平文を一切渡さない（暗号文 `ciphertext` と `iv` のみ受信・保存）。
+* **命名規則**:
+  * TypeScript / JSON（通信ペイロード）: `camelCase`（例: `isReadVisible`, `keyEpoch`）
+  * SQLite データベース: `snake_case`（例: `is_read_visible`, `key_epoch`）
 
 ---
 
-## 4. WebSocket イベント仕様 (`/ws/rooms/:roomId`)
+## 3. React Router v7 ルートエンドポイント一覧
 
-WebSocket接続内では、すべて `type` プロパティを持ったJSON文字列を相互にパースして通信を行います。
+### 3.1 チャットメイン画面 (`app/routes/chat.$spaceId.$channelId.tsx`)
 
-### 4.1 クライアント ➡️ サーバー（ユーザーの行動を通知）
+| 区分 | メソッド / 関数 | 概要 | リクエスト | レスポンス / 内部処理 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Server** | `loader` | チャンネル初期データ ＆ 暗号化ログ取得 | パラメータ: `spaceId`, `channelId`<br>クエリ: `?cursor=...` | `{ spaceMeta, channel, encryptedMessages: MessageEntity[], wrappedSpaceKey }` |
+| **Client** | `clientLoader` (`hydrate = true`) | 透過的一括復号 ＆ 鍵ロストガード | `serverLoader()` の結果 | IndexedDB の秘密鍵で復号した平文 `{ messages: DecryptedMessage[] }` を UI に提供。<br>※鍵が存在しない場合は `redirect('/restore-key')` |
+| **Client** | `clientAction` | 送信前暗号化 ＆ 平文消去 | `FormData` (`message`, `workflowPayload` 等) | クライアント側で AES-GCM 暗号化し、`formData.delete('message')` 後に `formData.set('ciphertext', ...)` をセットして `serverAction()` を呼び出す |
+| **Server** | `action` | 暗号文の永続化 ＆ 削除・編集 | `FormData` (`intent`, `ciphertext`, `iv`, `messageId`) | `SpaceActor` の RPC を呼び出して内蔵 SQLite へ保存。WebSocket 経由で全クライアントへブロードキャスト |
 
-激しい状態変化を伴うイベントです。これらはDBには保存せず、メモリ（Durable Objects等）経由で即座にブロードキャストされます。
+### 3.2 鍵復元・PIN入力画面 (`app/routes/restore-key.tsx`)
 
-- **タイピング開始時**
+| 区分 | メソッド / 関数 | 概要 | リクエスト | レスポンス / 内部処理 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Server** | `loader` | 鍵復元状態 ＆ PINソルト取得 | 認証セッション Cookie | `{ pinSalt, isLocked, remainingAttempts }`（UserActor より取得） |
+| **Client** | `clientAction` | 6桁PIN認証トークン導出 ＆ 秘密鍵アンラップ | `FormData` (`pin`) | 1. 6桁PIN ＋ `pinSalt` から認証用ハッシュ (`pinAuthHash`) を導出し `serverAction()` へ送信<br>2. サーバーから返却された `encryptedBackupUserKey` と `serverPepperToken` を用い、最終 KEK を導出<br>3. `crypto.subtle.unwrapKey` で `extractable: false` な秘密鍵を IndexedDB に直接保存（オフライン総当たりを暗号学的に遮断） |
+| **Server** | `action` | PIN 検証・ロックアウト管理・Pepper 結合ボールト返却 | `FormData` (`pinAuthHash`) | `UserActor` で試行回数ロックアウト（連続5回失敗で一時凍結）を検証。一致時のみ Cloudflare Workers 環境シークレット (`Pepper`) 由来の `serverPepperToken` と `encryptedBackupUserKey` を返却 |
 
+### 3.3 スペース管理・設定画面 (`app/routes/settings.tsx`)
+
+| 区分 | メソッド / 関数 | 概要 | リクエスト | レスポンス / 内部処理 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Server** | `loader` | スペース設定・参加メンバー・カスタム絵文字一覧取得 | パラメータ: `spaceId` | `{ spaceMeta, members, customEmojis, myProfile }` |
+| **Server** | `action` | 空気感トグル変更、定員変更、カスタム絵文字登録 | `FormData` (`intent`, `settings`, `emojiFile`) | 画像は Cloudflare R2 に保管し、メタデータを `SpaceActor` 内蔵 SQLite へ保存。WebSocket で全メンバーに反映 |
+
+### 3.4 リソースルート ＆ OpenAPI 連携 (`app/routes/api.*.ts`)
+
+React Router v7 の UI ルート（`loader` / `action`）に加え、外部システム連携や programmatic な呼び出し向けに以下の Resource Routes（`openapi.yaml` 準拠）を提供します。
+
+* **`/api/users/profile` (`GET` / `PATCH`)**: ユーザーの基本プロフィール・公開鍵・ステータスランプ（🟢/🔴/🟡）取得・更新。
+* **`/api/users/backup-vault` (`POST`) / `/api/users/verify-pin` (`POST`)**: 6桁バックアップ PIN による暗号化ボールト登録、およびロックアウト・Pepper 保護付きボールト復元。
+* **`/api/spaces/:spaceId/emojis` (`GET` / `POST`)**: スペース単位のカスタム絵文字一覧取得 ＆ Cloudflare R2 マルチパートアップロード。
+* **`/api/webhooks/:token` (`POST`)**: 外部システムからの Inbound Webhook（事前共有されたチャンネル用公開鍵 / Webhook 鍵で E2EE 暗号化されたペイロード `ciphertext`, `iv` を受信し、対象チャンネルへ配信）。
+
+---
+
+## 4. WebSocket イベント仕様 (`/ws/spaces/:spaceId`)
+
+すべての WebSocket メッセージは `type` プロパティを含む JSON 形式で通信します。
+
+### 4.1 接続確立フロー (Handshake)
+
+1. クライアントが `GET /ws/spaces/:spaceId` へ WebSocket Upgrade リクエストを送信（セッション Cookie 同伴）。
+2. Worker の認可ガード（`requireSpaceMember`）で検証後、`SpaceActor.fetch()` に転送して WebSocket Hibernation 接続を確立。
+3. 接続時、`SpaceActor` はクライアントの WebSocket オブジェクトにメンバー情報（`memberId`, `role`）を添付（`ws.serializeAttachment`）。
+
+### 4.2 クライアント ➡️ サーバー（ユーザーアクション）
+
+激しい状態変化やリアルタイムイベント。インメモリで処理され、即座に他メンバーへブロードキャストされます。
+
+* **タイピング開始 / 停止**:
   ```json
-  { "type": "TYPING_START", "userId": "u_123" }
+  { "type": "TYPING_UPDATE", "channelId": "ch_123", "isTyping": true }
+  ```
+* **在室気配ピン (Presence Ping)**:
+  ```json
+  { "type": "PRESENCE_PING", "channelId": "ch_123" }
+  ```
+* **リアルタイム暗号化メッセージ送信 (低遅延ショートカット)**:
+  ```json
+  {
+    "type": "SEND_MESSAGE",
+    "channelId": "ch_123",
+    "parentMessageId": null,
+    "ciphertext": "Base64...",
+    "iv": "Base64...",
+    "keyEpoch": 1,
+    "workflowType": null
+  }
+  ```
+* **絵文字・スタンプリアクション**:
+  ```json
+  { "type": "TOGGLE_REACTION", "messageId": "msg_999", "emojiCode": "🍵" }
   ```
 
-- **タイピング終了時（または入力停止から数秒経過時）**
+### 4.3 サーバー ➡️ クライアント（ブロードキャスト配信）
 
-  ```json
-  { "type": "TYPING_STOP", "userId": "u_123" }
-  ```
-
-### 4.2 サーバー ➡️ クライアント（ルーム内の全員に一斉配信）
-
-- **誰かが新規メッセージを投稿した時**
-  HTTP の `POST /api/v1/rooms/:roomId/messages` が成功したタイミングで、バックエンドから接続中のメンバー全員に配信する。
-  フロントエンド側では、TanStack Query の `queryClient.setQueryData` を用いて、既存のキャッシュメッセージ配列にこのデータを直接オプティミスティック（または追記）反映する。
-
+* **新着暗号化メッセージ (`NEW_MESSAGE`)**:
   ```json
   {
     "type": "NEW_MESSAGE",
     "data": {
-      "id": "m_999",
-      "content": "今夜焚き火囲みませんか？",
-      "mediaUrl": "https://drive.google.com/...",
-      "userId": "u_123",
-      "createdAt": "2026-07-10T00:00:00.000Z"
+      "id": "msg_999",
+      "channelId": "ch_123",
+      "parentMessageId": null,
+      "senderMemberId": "mem_456",
+      "ciphertext": "Base64...",
+      "iv": "Base64...",
+      "keyEpoch": 1,
+      "workflowType": null,
+      "createdAt": "2026-11-09T02:00:00.000Z"
+    }
+  }
+  ```
+* **メッセージ編集 (`MESSAGE_EDIT`)**:
+  ```json
+  {
+    "type": "MESSAGE_EDIT",
+    "data": {
+      "id": "msg_999",
+      "channelId": "ch_123",
+      "ciphertext": "Base64...",
+      "iv": "Base64...",
+      "updatedAt": "2026-11-09T02:05:00.000Z"
+    }
+  }
+  ```
+* **メッセージ完全削除 (`MESSAGE_DELETE`)**:
+  ```json
+  {
+    "type": "MESSAGE_DELETE",
+    "data": { "id": "msg_999", "channelId": "ch_123" }
+  }
+  ```
+* **リアクション更新 (`REACTION_UPDATE`)**:
+  ```json
+  {
+    "type": "REACTION_UPDATE",
+    "data": {
+      "messageId": "msg_999",
+      "reactions": [{ "emojiCode": "🍵", "count": 3, "me": true }]
+    }
+  }
+  ```
+* **在室気配 ＆ 会話熱量状態 (`PRESENCE_STATE`)**:
+  ```json
+  {
+    "type": "PRESENCE_STATE",
+    "data": {
+      "channelId": "ch_123",
+      "activeMembers": [
+        { "memberId": "mem_456", "name": "サユリ", "statusLamp": "free" }
+      ],
+      "heatLevel": 0.75
+    }
+  }
+  ```
+* **チャンネル空気感トグル即時反映 (`SETTING_TOGGLE`)**:
+  ```json
+  {
+    "type": "SETTING_TOGGLE",
+    "data": {
+      "channelId": "ch_123",
+      "settings": {
+        "isReadVisible": false,
+        "isTypingVisible": true,
+        "isThreadEnabled": true,
+        "isMentionEnabled": false,
+        "isAnonymousMode": false,
+        "isEphemeral": false
+      }
     }
   }
   ```
 
-- **誰かがメッセージを編集した時**
-
-  ```json
-  {
-    "type": "MESSAGE_EDIT",
-    "data": { "id": "m_999", "content": "編集後のメッセージ", "updatedAt": "2026-07-10T00:05:00.000Z" }
-  }
-  ```
-
-- **誰かがメッセージを削除した時**
-
-  ```json
-  {
-    "type": "MESSAGE_DELETE",
-    "data": { "id": "m_999" }
-  }
-  ```
-
-- **誰かのタイピング状態が変化した時**
-  フロントエンド側では、Zustand の `typingUsers` ストアを直接書き換えて高速にUIに反映する。
-
-  ```json
-  {
-    "type": "USER_TYPING",
-    "data": { "userId": "u_123", "isTyping": true }
-  }
-  ```
-
 ---
 
-## 5. バックエンド（Hono）実装用コード構造例
+## 5. Workers Native RPC インターフェース設計
 
-本設計を整理して実装する際の、`apps/backend/src/index.ts` の基本構成例です。
-
-```typescript
-// apps/backend/src/index.ts
-import { Hono } from 'hono'
-import { cors } from 'hono/cors'
-import { upgradeWebSocket } from 'hono/cloudflare-workers'
-import { usersRoutes } from './routes/users'
-import { roomsRoutes } from './routes/rooms'
-
-const app = new Hono()
-
-// CORSの設定
-app.use('/api/*', cors({ origin: (o) => o, credentials: true }))
-
-// 明示的なルーティング結合により、WebSocketのパス巻き込みを完全に回避
-const routes = app
-  // === 1. HTTP REST エンドポイント ===
-  .route('/api/v1/users', usersRoutes)
-  .route('/api/v1/rooms', roomsRoutes)
-  // メッセージの単体操作やWebhookなど、必要に応じて個別定義
-  .put('/api/v1/messages/:messageId', (c) => c.json({ success: true }))
-  .delete('/api/v1/messages/:messageId', (c) => c.json({ success: true }))
-  .post('/api/v1/webhooks/:webhookToken', (c) => c.json({ success: true }))
-
-  // === 2. WebSocket エンドポイント（独立配置） ===
-  .get(
-    '/ws/rooms/:roomId',
-    upgradeWebSocket((c) => {
-      const roomId = c.req.param('roomId')
-      return {
-        onMessage(event, ws) {
-          // Durable Objects や マネージドPub/Subと連携してブロードキャスト処理を記述
-          ws.send(JSON.stringify({ type: 'ECHO', data: event.data }))
-        },
-        onClose() {
-          console.log(`[Room: ${roomId}] Disconnected`)
-        }
-      }
-    })
-  )
-
-// フロントエンド（Next.js）へ共有する唯一の型定義
-export type AppType = typeof routes
-export default app
-```
-
----
-
-## 6. フロントエンド（Next.js）での RPC 利用イメージ
-
-この設計図通りに構築すると、フロントエンド側では `client` オブジェクトから完全な階層補完とURLパラメータの型チェックが効くようになります。
+React Router の Server Loader / Action から Durable Objects を直接操作するための内部 RPC 定義。
 
 ```typescript
-import { client } from '@/lib/api' // hc<AppType>(BASE_URL) で初期化したインスタンス
+// workers/actors/space.actor.ts
+export interface SpaceActorRPC {
+  // メッセージ操作
+  postMessage(data: InsertMessageDTO): Promise<{ id: string }>;
+  editMessage(messageId: string, ciphertext: string, iv: string): Promise<boolean>;
+  deleteMessage(messageId: string): Promise<boolean>;
+  getRecentMessages(channelId: string, limit: number, cursor?: string): Promise<MessageEntity[]>;
 
-async function demo() {
-  // 1. HTTP API で過去ログを安全にGET
-  const res = await client.api.v1.rooms[':roomId'].messages.$get({
-    param: { roomId: 'room_abc' },
-    query: { limit: '20' }
-  })
-  if (res.ok) {
-    const { messages } = await res.json()
-  }
+  // 空気感・設定変更
+  updateChannelSettings(channelId: string, settings: Partial<ChannelSettings>): Promise<boolean>;
+  addCustomEmoji(emoji: InsertCustomEmojiDTO): Promise<{ id: string }>;
+  
+  // メンバー・鍵管理
+  joinMember(userId: string, role: string, wrappedKey: string): Promise<boolean>;
+  rotateSpaceKey(newKeyEpoch: number, rewrappedKeys: Record<string, string>): Promise<boolean>;
+}
 
-  // 2. WebSocketのURLもパスパラメータ付きで完全自動補完生成
-  const rawUrl = client.ws.rooms[':roomId'].$url({
-    param: { roomId: 'room_abc' }
-  })
-  const wsUrl = rawUrl.toString().replace(/^http/, 'ws')
-  const socket = new WebSocket(wsUrl)
+// workers/actors/user.actor.ts
+export interface UserActorRPC {
+  // 6桁PIN & ロックアウト・Pepper 保護管理
+  getPinChallenge(): Promise<{ pinSalt: string; isLocked: boolean; remainingAttempts: number }>;
+  setBackupVault(encryptedKey: string, salt: string, pinAuthHash: string): Promise<boolean>;
+  unlockBackupVault(pinAuthHash: string): Promise<{
+    isLocked: boolean;
+    remainingAttempts: number;
+    encryptedBackupUserKey?: string;
+    serverPepperToken?: string;
+  }>;
+
+  // プライベートメモ & ブックマーク (二重隔離)
+  addBookmark(data: InsertBookmarkDTO): Promise<{ id: string }>;
+  getBookmarks(): Promise<BookmarkEntity[]>;
+  deleteBookmark(bookmarkId: string): Promise<boolean>;
 }
 ```
