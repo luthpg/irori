@@ -2,23 +2,37 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "irori",
   "main": "./workers/app.ts",
-  "compatibility_date": "2026-12-01",
+  "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./build/client"
   },
+  "r2_buckets": [
+    {
+      "binding": "IRORI_BUCKET",
+      "bucket_name": "irori-media"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
         "name": "CHAT_ROOM",
         "class_name": "ChatRoom"
+      },
+      {
+        "name": "SPACE_ACTOR",
+        "class_name": "SpaceActor"
+      },
+      {
+        "name": "USER_ACTOR",
+        "class_name": "UserActor"
       }
     ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["ChatRoom"]
+      "new_sqlite_classes": ["ChatRoom", "SpaceActor", "UserActor"]
     }
   ]
 }
