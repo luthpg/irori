@@ -3,9 +3,11 @@
 ## 1. プロダクト概要
 
 ### 1.1 コンセプト
+
 「沈黙すら心地よい、温かな暗闇と灯り。シーンに合わせてノリと距離感をチューニングし、ゼロ知識E2EEで守られた空間に集う次世代プライベート・チャット」
 
 ### 1.2 企画背景と解決する課題
+
 現代のSNSやビジネスチャットツールがもたらす「常時接続・即レス・数字による評価」によるコミュニケーション疲れを解消し、安心して自分のペースで言葉を紡げるオンラインの居場所を提供する。
 
 1. **評価と即応プレッシャーの排除**:
@@ -21,66 +23,66 @@
 
 ### 2.1 認証 ＆ 鍵管理要件（E2EE / ゼロ知識）
 
-* **FR-AUTH-01 認証基盤**:
-  * Passkey（WebAuthn / PRF）、Email OTP、または OAuth による安全なアカウント作成・ログインを提供する。
-  * セッショントークンはエッジミドルウェアで検証し、自動ローリング延長を行う。
-* **FR-KEY-01 端末ローカル鍵管理**:
-  * ユーザーの秘密鍵ペア（ECDH P-256）は端末ローカル（ブラウザの IndexedDB / Web Crypto API）に安全に保存し、平文のままサーバーへ送信しない。
-  * `crypto.subtle.unwrapKey` を用い、メモリ上にも平文バイト列を露出させずに `extractable: false`（抽出不可）な CryptoKey として保管する（XSS耐性）。
-  * 初回登録時に `navigator.storage.persist()` を要求し、モバイルブラウザ（ITP）による IndexedDB の自動パージを防止する。
-  * 日常利用時は生体認証（Touch ID / Face ID / Windows Hello）やブラウザセッションと連動し、パスワード入力なしで瞬時に解錠する。
-* **FR-KEY-02 LINEライクな6桁バックアップPIN**:
-  * ユーザーが設定する「6桁のバックアップPINコード」から、クライアント側で高負荷 KDF（Argon2id または PBKDF2 310,000回）により鍵暗号化キー（AES-KW 256bit）を導出する。
-  * 秘密鍵を暗号化（ラップ）したボールトをユーザー専用の `UserActor` に退避する。
-  * **総当たり攻撃防御**: サーバー側（`UserActor`）で PIN 検証カウンターを管理し、5回連続失敗でアカウントを一時凍結（指数バックオフ）する。さらに Workers の環境シークレット（Pepper）を導出チェーンに挟み、オフラインでの GPU 総当たり探索を暗号学的に完全遮断する。
-* **FR-KEY-03 かんたん引き継ぎ ＆ サブ端末ログインQRコード**:
-  * 新端末に表示されるワンタイムQRコードをログイン済み端末でスキャンすることで、P2P 暗号化ハンドシェイク（ECDH）を行い、手動PIN入力不要で秘密鍵を直接安全に転送・同期できる。
-* **FR-KEY-04 鍵ロスト自動検知**:
-  * `clientLoader` で IndexedDB 内の鍵ロストを検知した場合、直ちに `/restore-key` へ自動リダイレクトする。
+- **FR-AUTH-01 認証基盤**:
+  - Passkey（WebAuthn / PRF）、Email OTP、または OAuth による安全なアカウント作成・ログインを提供する。
+  - セッショントークンはエッジミドルウェアで検証し、自動ローリング延長を行う。
+- **FR-KEY-01 端末ローカル鍵管理**:
+  - ユーザーの秘密鍵ペア（ECDH P-256）は端末ローカル（ブラウザの IndexedDB / Web Crypto API）に安全に保存し、平文のままサーバーへ送信しない。
+  - `crypto.subtle.unwrapKey` を用い、メモリ上にも平文バイト列を露出させずに `extractable: false`（抽出不可）な CryptoKey として保管する（XSS耐性）。
+  - 初回登録時に `navigator.storage.persist()` を要求し、モバイルブラウザ（ITP）による IndexedDB の自動パージを防止する。
+  - 日常利用時は生体認証（Touch ID / Face ID / Windows Hello）やブラウザセッションと連動し、パスワード入力なしで瞬時に解錠する。
+- **FR-KEY-02 LINEライクな6桁バックアップPIN**:
+  - ユーザーが設定する「6桁のバックアップPINコード」から、クライアント側で高負荷 KDF（Argon2id または PBKDF2 310,000回）により鍵暗号化キー（AES-KW 256bit）を導出する。
+  - 秘密鍵を暗号化（ラップ）したボールトをユーザー専用の `UserActor` に退避する。
+  - **総当たり攻撃防御**: サーバー側（`UserActor`）で PIN 検証カウンターを管理し、5回連続失敗でアカウントを一時凍結（指数バックオフ）する。さらに Workers の環境シークレット（Pepper）を導出チェーンに挟み、オフラインでの GPU 総当たり探索を暗号学的に完全遮断する。
+- **FR-KEY-03 かんたん引き継ぎ ＆ サブ端末ログインQRコード**:
+  - 新端末に表示されるワンタイムQRコードをログイン済み端末でスキャンすることで、P2P 暗号化ハンドシェイク（ECDH）を行い、手動PIN入力不要で秘密鍵を直接安全に転送・同期できる。
+- **FR-KEY-04 鍵ロスト自動検知**:
+  - `clientLoader` で IndexedDB 内の鍵ロストを検知した場合、直ちに `/restore-key` へ自動リダイレクトする。
 
 ### 2.2 コミュニケーション機能要件
 
-* **FR-CHAT-01 左右非対称バブルレイアウト**:
-  * 相手のメッセージは左寄せ（深色サーフェス）、自分のメッセージは右寄せ（炭火ウォームアンバー）に配置し、暗い画面でも直感的に自他の発言を識別できる。
-* **FR-CHAT-02 1メッセージ＝1バブルの完全独立（連投結合の完全排除）**:
-  * 同一ユーザーの短時間の連投であっても、勝手に1つの塊に合体（グルーピング）せず、すべてのメッセージを独立したバブルとして描画する。
-  * ぽつりぽつりと呟く会話のリズムを保ち、メッセージごとのリアクションやスレッド返信、個別削除を直感的に行える。
-* **FR-CHAT-03 メッセージ編集 ＆ 完全物理削除**:
-  * 送信後いつでも時間制限なしでメッセージの編集、および SQLite からの完全物理消去（`DELETE`）が可能。接続中の全クライアントへ即時ブロードキャストして消去する。自分の画面上だけで隠すローカル非表示にも対応。
-* **FR-CHAT-04 高速絵文字リアクション ＆ 労わりスタンプ**:
-  * メッセージホバー（長押し）で頻出絵文字ピッカーを表示し、ワンタップでリアクション可能。
-  * 言葉を考える余裕がない時でも気持ちを伝えられる労わりスタンプ（🍵、🔥、🙏 など）を標準提供。
-* **FR-CHAT-05 スペース単位のカスタム絵文字・スタンプ**:
-  * スペース管理者が画像（PNG / WebP / GIF / SVG）をアップロードし、ショートコード（`:emoji_name:`）として登録可能。
-  * メッセージ本文へのインライン挿入、およびメッセージリアクションとして利用可能（実体は Cloudflare R2 に保管）。
-* **FR-CHAT-06 右ペイン展開型スレッド**:
-  * メインタイムラインの流れを遮ることなく、特定の発言を深掘りできる右カラム展開型スレッドペインを提供。URL パラメータ（`?thread=msgId`）と連動し、リンク共有が可能。
-* **FR-CHAT-07 ピン留めトピックカード**:
-  * チャンネル上部に「週末の予定」「おすすめの本」などのトークテーマをカードとして固定し、非同期に回答を寄せ合える。
-* **FR-CHAT-08 予約送信 ＆ 気配連動デリバリー**:
-  * 日時指定の予約送信に加え、「相手のステータスが作業中から『ひま』に変わった瞬間に届ける」気配連動配信を提供（深夜の連絡でも相手を邪魔しない）。
-* **FR-CHAT-09 ワンタップ「未読に戻す」**:
-  * 開封済みメッセージやチャンネルをワンタップで未読状態に戻し、自分のペースで落ち着いて返信できるリズムを守る。
+- **FR-CHAT-01 左右非対称バブルレイアウト**:
+  - 相手のメッセージは左寄せ（深色サーフェス）、自分のメッセージは右寄せ（炭火ウォームアンバー）に配置し、暗い画面でも直感的に自他の発言を識別できる。
+- **FR-CHAT-02 1メッセージ＝1バブルの完全独立（連投結合の完全排除）**:
+  - 同一ユーザーの短時間の連投であっても、勝手に1つの塊に合体（グルーピング）せず、すべてのメッセージを独立したバブルとして描画する。
+  - ぽつりぽつりと呟く会話のリズムを保ち、メッセージごとのリアクションやスレッド返信、個別削除を直感的に行える。
+- **FR-CHAT-03 メッセージ編集 ＆ 完全物理削除**:
+  - 送信後いつでも時間制限なしでメッセージの編集、および SQLite からの完全物理消去（`DELETE`）が可能。接続中の全クライアントへ即時ブロードキャストして消去する。自分の画面上だけで隠すローカル非表示にも対応。
+- **FR-CHAT-04 高速絵文字リアクション ＆ 労わりスタンプ**:
+  - メッセージホバー（長押し）で頻出絵文字ピッカーを表示し、ワンタップでリアクション可能。
+  - 言葉を考える余裕がない時でも気持ちを伝えられる労わりスタンプ（🍵、🔥、🙏 など）を標準提供。
+- **FR-CHAT-05 スペース単位のカスタム絵文字・スタンプ**:
+  - スペース管理者が画像（PNG / WebP / GIF / SVG）をアップロードし、ショートコード（`:emoji_name:`）として登録可能。
+  - メッセージ本文へのインライン挿入、およびメッセージリアクションとして利用可能（実体は Cloudflare R2 に保管）。
+- **FR-CHAT-06 右ペイン展開型スレッド**:
+  - メインタイムラインの流れを遮ることなく、特定の発言を深掘りできる右カラム展開型スレッドペインを提供。URL パラメータ（`?thread=msgId`）と連動し、リンク共有が可能。
+- **FR-CHAT-07 ピン留めトピックカード**:
+  - チャンネル上部に「週末の予定」「おすすめの本」などのトークテーマをカードとして固定し、非同期に回答を寄せ合える。
+- **FR-CHAT-08 予約送信 ＆ 気配連動デリバリー**:
+  - 日時指定の予約送信に加え、「相手のステータスが作業中から『ひま』に変わった瞬間に届ける」気配連動配信を提供（深夜の連絡でも相手を邪魔しない）。
+- **FR-CHAT-09 ワンタップ「未読に戻す」**:
+  - 開封済みメッセージやチャンネルをワンタップで未読状態に戻し、自分のペースで落ち着いて返信できるリズムを守る。
 
 ### 2.3 空間演出要件（Irori Atmosphere）
 
-* **FR-ATM-01 会話温度アンビエント・ライト**:
-  * 画面背景やヘッダーの微細なアンバーの灯りが、滞在人数や会話テンポ（熱量）に応じて「炭火の呼吸」のようにじんわりと明度・彩度を変化させる。
-  * 会話が止まっている時は穏やかな熾火（微光）に落ち着き、沈黙が気まずくならない視覚効果を生む。
-* **FR-ATM-02 環境音（ASMR）サウンドスケープ**:
-  * パチパチと炭が爆ぜる音、夜の虫の声、雨音、波音などの環境音をクライアント側（Web Audio API）で小さく再生可能（ワンタップでミュート・音量調節）。
-* **FR-ATM-03 在室気配（プレゼンス）表示**:
-  * ボイスチャットを繋がなくても、同じチャンネルに滞在しているメンバーのアバターが画面上部に控えめに並び、無言の同席（作業・読書）を共有できる。
-* **FR-ATM-04 自然消滅するショート滞在ルーム**:
-  * 「今夜だけ集まる」一時ルームを作成可能。参加者が全員退室するか、一定時間会話が途絶えると、Durable Object の Alarm API により SQLite ストレージ自体が物理破棄（`deleteAll()`）され、自動でクローズする。
+- **FR-ATM-01 会話温度アンビエント・ライト**:
+  - 画面背景やヘッダーの微細なアンバーの灯りが、滞在人数や会話テンポ（熱量）に応じて「炭火の呼吸」のようにじんわりと明度・彩度を変化させる。
+  - 会話が止まっている時は穏やかな熾火（微光）に落ち着き、沈黙が気まずくならない視覚効果を生む。
+- **FR-ATM-02 環境音（ASMR）サウンドスケープ**:
+  - パチパチと炭が爆ぜる音、夜の虫の声、雨音、波音などの環境音をクライアント側（Web Audio API）で小さく再生可能（ワンタップでミュート・音量調節）。
+- **FR-ATM-03 在室気配（プレゼンス）表示**:
+  - ボイスチャットを繋がなくても、同じチャンネルに滞在しているメンバーのアバターが画面上部に控えめに並び、無言の同席（作業・読書）を共有できる。
+- **FR-ATM-04 自然消滅するショート滞在ルーム**:
+  - 「今夜だけ集まる」一時ルームを作成可能。参加者が全員退室するか、一定時間会話が途絶えると、Durable Object の Alarm API により SQLite ストレージ自体が物理破棄（`deleteAll()`）され、自動でクローズする。
 
 ### 2.4 空間設計 ＆ 空気感トグル要件
 
-* **FR-SPACE-01 スペース × チャンネル構造**:
-  * 1つのスペース内に複数のチャンネル（`#雑談`, `#作業部屋` 等）を作成・並び替え可能。
-  * **少人数定員 ＆ 自動縮退**: スペースやチャンネルに定員（例：最大6名）を設定可能。単一チャンネルのスペースではチャンネル一覧サイドバーを自動非表示にしてシングルルーム表示に切り替わる。
-* **FR-SPACE-02 チャンネル空気感リアルタイムトグル**:
-  * 管理者が以下の設定を即時変更でき、WebSocket により全参加者画面へ 0 秒反映される。
+- **FR-SPACE-01 スペース × チャンネル構造**:
+  - 1つのスペース内に複数のチャンネル（`#雑談`, `#作業部屋` 等）を作成・並び替え可能。
+  - **少人数定員 ＆ 自動縮退**: スペースやチャンネルに定員（例：最大6名）を設定可能。単一チャンネルのスペースではチャンネル一覧サイドバーを自動非表示にしてシングルルーム表示に切り替わる。
+- **FR-SPACE-02 チャンネル空気感リアルタイムトグル**:
+  - 管理者が以下の設定を即時変更でき、WebSocket により全参加者画面へ 0 秒反映される。
     1. **既読表示**: ON / OFF（デフォルト OFF：既読プレッシャー排除）
     2. **タイピング表示**: ON / OFF
     3. **スレッド返信**: ON / OFF
@@ -90,52 +92,55 @@
 
 ### 2.5 パーソナル管理 ＆ ワークフロー要件
 
-* **FR-PERS-01 メッセージ個別ブックマーク ＆ プライベートメモ**:
-  * 共有チャット欄のメッセージをブックマークし、自分専用の非公開メモを書き添えられる。
-  * 共有チャット欄には一切表示されず、個人の鍵で暗号化して `UserActor` に保存（第三者やスペース管理者は閲覧不能の二重隔離）。
-* **FR-PERS-02 スペース別マルチプロフィール**:
-  * 1つのアカウントのまま、スペースごとに異なる表示名・アイコン・自己紹介を設定可能（公私の文脈混同を防止）。
-* **FR-PERS-03 4段階の通知グラデーション制御**:
-  * スペース・チャンネル単位で通知強度（すべて通知、メンション・返信のみ、気配のみ、完全ミュート）を調律可能。
-  * 自身のステータス（🟢 ひま / 🔴 作業中 / 🟡 離席）と連動してプッシュ通知を自動抑制。
-* **FR-FLOW-01 ノーコード・クイックワークフロー**:
-  * チャット入力欄から呼び出せる構造化カード（日程調整・投票・共有TODO・ポモドーロタイマー）。入力値はすべてクライアント側で E2EE 暗号化。
-* **FR-NOTE-01 共有ノート ＆ 共有アルバム**:
-  * Markdown 対応の共有ノートとオリジナル画質アルバム。暗号化バイナリを Cloudflare R2 に保管。
-* **FR-EXT-01 Inbound Webhook**:
-  * 外部サービス（GitHub、カレンダー等）からの通知を受信・投稿する専用 Webhook URL 発行。
+- **FR-PERS-01 メッセージ個別ブックマーク ＆ プライベートメモ**:
+  - 共有チャット欄のメッセージをブックマークし、自分専用の非公開メモを書き添えられる。
+  - 共有チャット欄には一切表示されず、個人の鍵で暗号化して `UserActor` に保存（第三者やスペース管理者は閲覧不能の二重隔離）。
+- **FR-PERS-02 スペース別マルチプロフィール**:
+  - 1つのアカウントのまま、スペースごとに異なる表示名・アイコン・自己紹介を設定可能（公私の文脈混同を防止）。
+- **FR-PERS-03 4段階の通知グラデーション制御**:
+  - スペース・チャンネル単位で通知強度（すべて通知、メンション・返信のみ、気配のみ、完全ミュート）を調律可能。
+  - 自身のステータス（🟢 ひま / 🔴 作業中 / 🟡 離席）と連動してプッシュ通知を自動抑制。
+- **FR-FLOW-01 ノーコード・クイックワークフロー**:
+  - チャット入力欄から呼び出せる構造化カード（日程調整・投票・共有TODO・ポモドーロタイマー）。入力値はすべてクライアント側で E2EE 暗号化。
+- **FR-NOTE-01 共有ノート ＆ 共有アルバム**:
+  - Markdown 対応の共有ノートとオリジナル画質アルバム。暗号化バイナリを Cloudflare R2 に保管。
+- **FR-EXT-01 Inbound Webhook**:
+  - 外部サービス（GitHub、カレンダー等）からの通知を受信・投稿する専用 Webhook URL 発行。
 
 ---
 
 ## 3. 非機能要件
 
 ### 3.1 アーキテクチャ ＆ インフラ要件
-* **NFR-ARCH-01 シングルパッケージ構成**:
-  * 過剰なモノレポ分割を廃止し、React Router v7 + Cloudflare Durable Objects を単一の `package.json` および単一 Worker エントリーポイントに集約する（KISS原則）。
-* **NFR-ARCH-02 テナント完全隔離（Actor Isolation）**:
-  * スペースごとに `SpaceActor`、ユーザーごとに `UserActor` の独立した SQLite データベースを割り当てる。
-  * 単一巨大DBにおける IDOR リスクや、大量物理削除時のテーブル断片化・インデックス再構築コストを根本から解消する。
-* **NFR-ARCH-03 リアルタイム同期 ＆ 待機コスト最適化**:
-  * Cloudflare WebSocket Hibernation API を採用。無通信時は Worker メモリを解放し、数千接続であっても待機コストを実質ゼロに抑える。
-* **NFR-ARCH-04 クライアントE2EE透過処理**:
-  * React Router v7 の `clientLoader`（`hydrate = true`）で初期暗号文データを透過的に一括復号し、`clientAction` で送信前の平文フィールドを確実に消去する。UI コンポーネントは平文メッセージを受け取るクリーンな構造を維持する。
+
+- **NFR-ARCH-01 シングルパッケージ構成**:
+  - 過剰なモノレポ分割を廃止し、React Router v7 + Cloudflare Durable Objects を単一の `package.json` および単一 Worker エントリーポイントに集約する（KISS原則）。
+- **NFR-ARCH-02 テナント完全隔離（Actor Isolation）**:
+  - スペースごとに `SpaceActor`、ユーザーごとに `UserActor` の独立した SQLite データベースを割り当てる。
+  - 単一巨大DBにおける IDOR リスクや、大量物理削除時のテーブル断片化・インデックス再構築コストを根本から解消する。
+- **NFR-ARCH-03 リアルタイム同期 ＆ 待機コスト最適化**:
+  - Cloudflare WebSocket Hibernation API を採用。無通信時は Worker メモリを解放し、数千接続であっても待機コストを実質ゼロに抑える。
+- **NFR-ARCH-04 クライアントE2EE透過処理**:
+  - React Router v7 の `clientLoader`（`hydrate = true`）で初期暗号文データを透過的に一括復号し、`clientAction` で送信前の平文フィールドを確実に消去する。UI コンポーネントは平文メッセージを受け取るクリーンな構造を維持する。
 
 ### 3.2 セキュリティ ＆ 暗号要件
-* **NFR-SEC-01 ゼロ知識E2EE**:
-  * メッセージ本文、スレッド、添付メディア、ワークフロー内容、プライベートメモはすべて端末上で AES-GCM 256bit 暗号化。
-  * ルーティング用メタデータ（スペースID、送信者ID、タイムスタンプ等）のみを平文として厳格に分離。
-* **NFR-SEC-02 鍵世代（keyEpoch）管理**:
-  * メンバー除名（キック）時はスペースマスターキー（SMK）の世代をインクリメントし、残存メンバーにのみ再配布して以後の復号を暗号学的に遮断。
-* **NFR-SEC-03 CWE-209 生エラー非露出**:
-  * 内部例外や SQLite エラーをクライアントへ返却せず、常に一般化された安全なエラーメッセージを返す。
+
+- **NFR-SEC-01 ゼロ知識E2EE**:
+  - メッセージ本文、スレッド、添付メディア、ワークフロー内容、プライベートメモはすべて端末上で AES-GCM 256bit 暗号化。
+  - ルーティング用メタデータ（スペースID、送信者ID、タイムスタンプ等）のみを平文として厳格に分離。
+- **NFR-SEC-02 鍵世代（keyEpoch）管理**:
+  - メンバー除名（キック）時はスペースマスターキー（SMK）の世代をインクリメントし、残存メンバーにのみ再配布して以後の復号を暗号学的に遮断。
+- **NFR-SEC-03 CWE-209 生エラー非露出**:
+  - 内部例外や SQLite エラーをクライアントへ返却せず、常に一般化された安全なエラーメッセージを返す。
 
 ### 3.3 パフォーマンス ＆ タイポグラフィ要件
-* **NFR-PERF-01 レイテンシ**:
-  * 同一 Durable Object インスタンス内で SQLite 書き込みと WebSocket ブロードキャストが完結するため、メッセージ配信遅延 50ms 未満を目標とする。
-* **NFR-TYPO-01 美しい日本語組版**:
-  * デジタル庁デザインシステム準拠の行高（1.65）と、BudouX による自然な文脈折り返しを組み込み、モバイルでも単語の泣き別れを防止する。
-* **NFR-UI-01 タッチターゲット ＆ レスポンシブ**:
-  * モバイル環境での最小タップ領域 44×44px、iOS フォーカス時自動ズーム防止（入力フォント 16px 以上）。
+
+- **NFR-PERF-01 レイテンシ**:
+  - 同一 Durable Object インスタンス内で SQLite 書き込みと WebSocket ブロードキャストが完結するため、メッセージ配信遅延 50ms 未満を目標とする。
+- **NFR-TYPO-01 美しい日本語組版**:
+  - デジタル庁デザインシステム準拠の行高（1.65）と、BudouX による自然な文脈折り返しを組み込み、モバイルでも単語の泣き別れを防止する。
+- **NFR-UI-01 タッチターゲット ＆ レスポンシブ**:
+  - モバイル環境での最小タップ領域 44×44px、iOS フォーカス時自動ズーム防止（入力フォント 16px 以上）。
 
 ---
 
@@ -144,39 +149,41 @@
 大画面では広々とした4ペイン構成を提供し、少人数スペースや画面幅に応じて自動縮退する。
 
 1. **Narrow Rail (左端 64px)**:
-   * Irori ロゴマーク（炭火アンバー発光）
-   * 参加スペースアイコン一覧（会話熱量に応じた微光リング、未読バッジ）
-   * 個人ブックマーク一覧導線
-   * 自身のステータスランプ切り替え（🟢/🔴/🟡）
+   - Irori ロゴマーク（炭火アンバー発光）
+   - 参加スペースアイコン一覧（会話熱量に応じた微光リング、未読バッジ）
+   - 個人ブックマーク一覧導線
+   - 自身のステータスランプ切り替え（🟢/🔴/🟡）
 2. **Channel Sidebar (左内 260px / 単一チャンネル時は自動非表示)**:
-   * スペース名・定員・空気感概要
-   * チャンネル一覧カード（`#雑談`, `#作業部屋` 等）
-   * 共有ノート・アルバム導線
-   * スペース別プロフィール切り替え
-   * 環境音（ASMR）コントローラー
+   - スペース名・定員・空気感概要
+   - チャンネル一覧カード（`#雑談`, `#作業部屋` 等）
+   - 共有ノート・アルバム導線
+   - スペース別プロフィール切り替え
+   - 環境音（ASMR）コントローラー
 3. **Main Timeline (中央 flex-1)**:
-   * **ヘッダー**: チャンネル名、在室メンバーアバター群、ピン留めトピックカード、**空気感リアルタイムトグルスイッチ群（既読・タイピング・スレッド・一時・匿名）**
-   * **タイムライン**: 左右非対称バブル（1メッセージ＝1バブル完全独立）、リアクションピル
-   * **入力バー**: マルチモーダル入力、ワークフロー呼び出し、予約送信・気配連動ボタン
+   - **ヘッダー**: チャンネル名、在室メンバーアバター群、ピン留めトピックカード、**空気感リアルタイムトグルスイッチ群（既読・タイピング・スレッド・一時・匿名）**
+   - **タイムライン**: 左右非対称バブル（1メッセージ＝1バブル完全独立）、リアクションピル
+   - **入力バー**: マルチモーダル入力、ワークフロー呼び出し、予約送信・気配連動ボタン
 4. **Context Drawer (右 340px / 開閉式)**:
-   * 右ペイン展開型スレッド詳細、またはチャンネル設定・招待パネル
+   - 右ペイン展開型スレッド詳細、またはチャンネル設定・招待パネル
 
 ---
 
 ## 5. コアデータモデル（Durable Objects 内蔵 SQLite）
 
 ### 5.1 `UserActor` 内蔵 SQLite（ユーザー個人単位）
-* `profile`: `userId`, `defaultName`, `defaultAvatar`, `statusLamp`, `publicKey`, `encryptedBackupUserKey`, `pinSalt`, `failedPinAttempts`, `pinLockedUntil`
-* `joined_spaces`: `spaceId`, `spaceName`, `themeColor`, `role`, `unreadCount`, `hasQuietActivity`, `notificationLevel`
-* `bookmarks`: `id`, `spaceId`, `channelId`, `messageId`, `encryptedMessageSnapshot`, `encryptedPrivateNote`, `iv`, `tags`, `createdAt`
-* `pending_deliveries`: `id`, `targetUserId`, `spaceId`, `channelId`, `ciphertext`, `iv`, `triggerType`, `scheduledAt`, `createdAt`
+
+- `profile`: `userId`, `defaultName`, `defaultAvatar`, `statusLamp`, `publicKey`, `encryptedBackupUserKey`, `pinSalt`, `failedPinAttempts`, `pinLockedUntil`
+- `joined_spaces`: `spaceId`, `spaceName`, `themeColor`, `role`, `unreadCount`, `hasQuietActivity`, `notificationLevel`
+- `bookmarks`: `id`, `spaceId`, `channelId`, `messageId`, `encryptedMessageSnapshot`, `encryptedPrivateNote`, `iv`, `tags`, `createdAt`
+- `pending_deliveries`: `id`, `targetUserId`, `spaceId`, `channelId`, `ciphertext`, `iv`, `triggerType`, `scheduledAt`, `createdAt`
 
 ### 5.2 `SpaceActor` 内蔵 SQLite（スペース単位）
-* `space_meta`: `id`, `name`, `themeColor`, `ambientSound`, `maxMembers`, `autoCloseHours`, `currentKeyEpoch`
-* `space_members`: `memberId`, `userId`, `role`, `overrideName`, `overrideAvatar`, `overrideBio`, `ephemeralStatusEncrypted`, `ephemeralStatusExpiresAt`, `wrappedSpaceKey`
-* `channels`: `id`, `name`, `category`, `order`, `pinnedTopicEncrypted`, `settings` (`isReadVisible`, `isTypingVisible`, `isThreadEnabled`, `isMentionEnabled`, `isAnonymousMode`, `isEphemeral`)
-* `messages`: `id`, `channelId`, `parentMessageId`, `senderMemberId`, `ciphertext`, `iv`, `keyEpoch`, `workflowType`, `workflowPayloadEncrypted`, `expiresAt`, `createdAt`, `updatedAt`
-* `reactions`: `messageId`, `memberId`, `emojiCode`
-* `custom_emojis`: `id`, `name`, `imageUrl`, `uploadedByMemberId`, `createdAt`
-* `read_cursors`: `channelId`, `memberId`, `lastReadMessageId`, `lastReadAt`, `isManuallyUnread`
-* `shared_notes`: `id`, `channelId`, `titleEncrypted`, `bodyEncrypted`, `iv`, `isPinned`, `updatedAt`
+
+- `space_meta`: `id`, `name`, `themeColor`, `ambientSound`, `maxMembers`, `autoCloseHours`, `currentKeyEpoch`
+- `space_members`: `memberId`, `userId`, `role`, `overrideName`, `overrideAvatar`, `overrideBio`, `ephemeralStatusEncrypted`, `ephemeralStatusExpiresAt`, `wrappedSpaceKey`
+- `channels`: `id`, `name`, `category`, `order`, `pinnedTopicEncrypted`, `settings` (`isReadVisible`, `isTypingVisible`, `isThreadEnabled`, `isMentionEnabled`, `isAnonymousMode`, `isEphemeral`)
+- `messages`: `id`, `channelId`, `parentMessageId`, `senderMemberId`, `ciphertext`, `iv`, `keyEpoch`, `workflowType`, `workflowPayloadEncrypted`, `expiresAt`, `createdAt`, `updatedAt`
+- `reactions`: `messageId`, `memberId`, `emojiCode`
+- `custom_emojis`: `id`, `name`, `imageUrl`, `uploadedByMemberId`, `createdAt`
+- `read_cursors`: `channelId`, `memberId`, `lastReadMessageId`, `lastReadAt`, `isManuallyUnread`
+- `shared_notes`: `id`, `channelId`, `titleEncrypted`, `bodyEncrypted`, `iv`, `isPinned`, `updatedAt`

@@ -34,11 +34,11 @@
 └───────────────────────────────┘               └────────────────────────┘
 ```
 
-* **E2EE の原則**:
-  * サーバー（Worker / Durable Objects）には、メッセージ本文、スレッド、添付メディア、ワークフロー内容、プライベートメモの平文を一切渡さない（暗号文 `ciphertext` と `iv` のみ受信・保存）。
-* **命名規則**:
-  * TypeScript / JSON（通信ペイロード）: `camelCase`（例: `isReadVisible`, `keyEpoch`）
-  * SQLite データベース: `snake_case`（例: `is_read_visible`, `key_epoch`）
+- **E2EE の原則**:
+  - サーバー（Worker / Durable Objects）には、メッセージ本文、スレッド、添付メディア、ワークフロー内容、プライベートメモの平文を一切渡さない（暗号文 `ciphertext` と `iv` のみ受信・保存）。
+- **命名規則**:
+  - TypeScript / JSON（通信ペイロード）: `camelCase`（例: `isReadVisible`, `keyEpoch`）
+  - SQLite データベース: `snake_case`（例: `is_read_visible`, `key_epoch`）
 
 ---
 
@@ -46,36 +46,36 @@
 
 ### 3.1 チャットメイン画面 (`app/routes/chat.$spaceId.$channelId.tsx`)
 
-| 区分 | メソッド / 関数 | 概要 | リクエスト | レスポンス / 内部処理 |
-| :--- | :--- | :--- | :--- | :--- |
-| **Server** | `loader` | チャンネル初期データ ＆ 暗号化ログ取得 | パラメータ: `spaceId`, `channelId`<br>クエリ: `?cursor=...` | `{ spaceMeta, channel, encryptedMessages: MessageEntity[], wrappedSpaceKey }` |
-| **Client** | `clientLoader` (`hydrate = true`) | 透過的一括復号 ＆ 鍵ロストガード | `serverLoader()` の結果 | IndexedDB の秘密鍵で復号した平文 `{ messages: DecryptedMessage[] }` を UI に提供。<br>※鍵が存在しない場合は `redirect('/restore-key')` |
-| **Client** | `clientAction` | 送信前暗号化 ＆ 平文消去 | `FormData` (`message`, `workflowPayload` 等) | クライアント側で AES-GCM 暗号化し、`formData.delete('message')` 後に `formData.set('ciphertext', ...)` をセットして `serverAction()` を呼び出す |
-| **Server** | `action` | 暗号文の永続化 ＆ 削除・編集 | `FormData` (`intent`, `ciphertext`, `iv`, `messageId`) | `SpaceActor` の RPC を呼び出して内蔵 SQLite へ保存。WebSocket 経由で全クライアントへブロードキャスト |
+| 区分       | メソッド / 関数                   | 概要                                   | リクエスト                                                  | レスポンス / 内部処理                                                                                                                           |
+| :--------- | :-------------------------------- | :------------------------------------- | :---------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server** | `loader`                          | チャンネル初期データ ＆ 暗号化ログ取得 | パラメータ: `spaceId`, `channelId`<br>クエリ: `?cursor=...` | `{ spaceMeta, channel, encryptedMessages: MessageEntity[], wrappedSpaceKey }`                                                                   |
+| **Client** | `clientLoader` (`hydrate = true`) | 透過的一括復号 ＆ 鍵ロストガード       | `serverLoader()` の結果                                     | IndexedDB の秘密鍵で復号した平文 `{ messages: DecryptedMessage[] }` を UI に提供。<br>※鍵が存在しない場合は `redirect('/restore-key')`          |
+| **Client** | `clientAction`                    | 送信前暗号化 ＆ 平文消去               | `FormData` (`message`, `workflowPayload` 等)                | クライアント側で AES-GCM 暗号化し、`formData.delete('message')` 後に `formData.set('ciphertext', ...)` をセットして `serverAction()` を呼び出す |
+| **Server** | `action`                          | 暗号文の永続化 ＆ 削除・編集           | `FormData` (`intent`, `ciphertext`, `iv`, `messageId`)      | `SpaceActor` の RPC を呼び出して内蔵 SQLite へ保存。WebSocket 経由で全クライアントへブロードキャスト                                            |
 
 ### 3.2 鍵復元・PIN入力画面 (`app/routes/restore-key.tsx`)
 
-| 区分 | メソッド / 関数 | 概要 | リクエスト | レスポンス / 内部処理 |
-| :--- | :--- | :--- | :--- | :--- |
-| **Server** | `loader` | 鍵復元状態 ＆ PINソルト取得 | 認証セッション Cookie | `{ pinSalt, isLocked, remainingAttempts }`（UserActor より取得） |
-| **Client** | `clientAction` | 6桁PIN認証トークン導出 ＆ 秘密鍵アンラップ | `FormData` (`pin`) | 1. 6桁PIN ＋ `pinSalt` から認証用ハッシュ (`pinAuthHash`) を導出し `serverAction()` へ送信<br>2. サーバーから返却された `encryptedBackupUserKey` と `serverPepperToken` を用い、最終 KEK を導出<br>3. `crypto.subtle.unwrapKey` で `extractable: false` な秘密鍵を IndexedDB に直接保存（オフライン総当たりを暗号学的に遮断） |
-| **Server** | `action` | PIN 検証・ロックアウト管理・Pepper 結合ボールト返却 | `FormData` (`pinAuthHash`) | `UserActor` で試行回数ロックアウト（連続5回失敗で一時凍結）を検証。一致時のみ Cloudflare Workers 環境シークレット (`Pepper`) 由来の `serverPepperToken` と `encryptedBackupUserKey` を返却 |
+| 区分       | メソッド / 関数 | 概要                                                | リクエスト                 | レスポンス / 内部処理                                                                                                                                                                                                                                                                                                         |
+| :--------- | :-------------- | :-------------------------------------------------- | :------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server** | `loader`        | 鍵復元状態 ＆ PINソルト取得                         | 認証セッション Cookie      | `{ pinSalt, isLocked, remainingAttempts }`（UserActor より取得）                                                                                                                                                                                                                                                              |
+| **Client** | `clientAction`  | 6桁PIN認証トークン導出 ＆ 秘密鍵アンラップ          | `FormData` (`pin`)         | 1. 6桁PIN ＋ `pinSalt` から認証用ハッシュ (`pinAuthHash`) を導出し `serverAction()` へ送信<br>2. サーバーから返却された `encryptedBackupUserKey` と `serverPepperToken` を用い、最終 KEK を導出<br>3. `crypto.subtle.unwrapKey` で `extractable: false` な秘密鍵を IndexedDB に直接保存（オフライン総当たりを暗号学的に遮断） |
+| **Server** | `action`        | PIN 検証・ロックアウト管理・Pepper 結合ボールト返却 | `FormData` (`pinAuthHash`) | `UserActor` で試行回数ロックアウト（連続5回失敗で一時凍結）を検証。一致時のみ Cloudflare Workers 環境シークレット (`Pepper`) 由来の `serverPepperToken` と `encryptedBackupUserKey` を返却                                                                                                                                    |
 
 ### 3.3 スペース管理・設定画面 (`app/routes/settings.tsx`)
 
-| 区分 | メソッド / 関数 | 概要 | リクエスト | レスポンス / 内部処理 |
-| :--- | :--- | :--- | :--- | :--- |
-| **Server** | `loader` | スペース設定・参加メンバー・カスタム絵文字一覧取得 | パラメータ: `spaceId` | `{ spaceMeta, members, customEmojis, myProfile }` |
-| **Server** | `action` | 空気感トグル変更、定員変更、カスタム絵文字登録 | `FormData` (`intent`, `settings`, `emojiFile`) | 画像は Cloudflare R2 に保管し、メタデータを `SpaceActor` 内蔵 SQLite へ保存。WebSocket で全メンバーに反映 |
+| 区分       | メソッド / 関数 | 概要                                               | リクエスト                                     | レスポンス / 内部処理                                                                                     |
+| :--------- | :-------------- | :------------------------------------------------- | :--------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| **Server** | `loader`        | スペース設定・参加メンバー・カスタム絵文字一覧取得 | パラメータ: `spaceId`                          | `{ spaceMeta, members, customEmojis, myProfile }`                                                         |
+| **Server** | `action`        | 空気感トグル変更、定員変更、カスタム絵文字登録     | `FormData` (`intent`, `settings`, `emojiFile`) | 画像は Cloudflare R2 に保管し、メタデータを `SpaceActor` 内蔵 SQLite へ保存。WebSocket で全メンバーに反映 |
 
 ### 3.4 リソースルート ＆ OpenAPI 連携 (`app/routes/api.*.ts`)
 
 React Router v7 の UI ルート（`loader` / `action`）に加え、外部システム連携や programmatic な呼び出し向けに以下の Resource Routes（`openapi.yaml` 準拠）を提供します。
 
-* **`/api/users/profile` (`GET` / `PATCH`)**: ユーザーの基本プロフィール・公開鍵・ステータスランプ（🟢/🔴/🟡）取得・更新。
-* **`/api/users/backup-vault` (`POST`) / `/api/users/verify-pin` (`POST`)**: 6桁バックアップ PIN による暗号化ボールト登録、およびロックアウト・Pepper 保護付きボールト復元。
-* **`/api/spaces/:spaceId/emojis` (`GET` / `POST`)**: スペース単位のカスタム絵文字一覧取得 ＆ Cloudflare R2 マルチパートアップロード。
-* **`/api/webhooks/:token` (`POST`)**: 外部システムからの Inbound Webhook（事前共有されたチャンネル用公開鍵 / Webhook 鍵で E2EE 暗号化されたペイロード `ciphertext`, `iv` を受信し、対象チャンネルへ配信）。
+- **`/api/users/profile` (`GET` / `PATCH`)**: ユーザーの基本プロフィール・公開鍵・ステータスランプ（🟢/🔴/🟡）取得・更新。
+- **`/api/users/backup-vault` (`POST`) / `/api/users/verify-pin` (`POST`)**: 6桁バックアップ PIN による暗号化ボールト登録、およびロックアウト・Pepper 保護付きボールト復元。
+- **`/api/spaces/:spaceId/emojis` (`GET` / `POST`)**: スペース単位のカスタム絵文字一覧取得 ＆ Cloudflare R2 マルチパートアップロード。
+- **`/api/webhooks/:token` (`POST`)**: 外部システムからの Inbound Webhook（事前共有されたチャンネル用公開鍵 / Webhook 鍵で E2EE 暗号化されたペイロード `ciphertext`, `iv` を受信し、対象チャンネルへ配信）。
 
 ---
 
@@ -93,15 +93,18 @@ React Router v7 の UI ルート（`loader` / `action`）に加え、外部シ�
 
 激しい状態変化やリアルタイムイベント。インメモリで処理され、即座に他メンバーへブロードキャストされます。
 
-* **タイピング開始 / 停止**:
+- **タイピング開始 / 停止**:
+
   ```json
   { "type": "TYPING_UPDATE", "channelId": "ch_123", "isTyping": true }
   ```
-* **在室気配ピン (Presence Ping)**:
+- **在室気配ピン (Presence Ping)**:
+
   ```json
   { "type": "PRESENCE_PING", "channelId": "ch_123" }
   ```
-* **リアルタイム暗号化メッセージ送信 (低遅延ショートカット)**:
+- **リアルタイム暗号化メッセージ送信 (低遅延ショートカット)**:
+
   ```json
   {
     "type": "SEND_MESSAGE",
@@ -113,14 +116,16 @@ React Router v7 の UI ルート（`loader` / `action`）に加え、外部シ�
     "workflowType": null
   }
   ```
-* **絵文字・スタンプリアクション**:
+- **絵文字・スタンプリアクション**:
+
   ```json
   { "type": "TOGGLE_REACTION", "messageId": "msg_999", "emojiCode": "🍵" }
   ```
 
 ### 4.3 サーバー ➡️ クライアント（ブロードキャスト配信）
 
-* **新着暗号化メッセージ (`NEW_MESSAGE`)**:
+- **新着暗号化メッセージ (`NEW_MESSAGE`)**:
+
   ```json
   {
     "type": "NEW_MESSAGE",
@@ -137,7 +142,8 @@ React Router v7 の UI ルート（`loader` / `action`）に加え、外部シ�
     }
   }
   ```
-* **メッセージ編集 (`MESSAGE_EDIT`)**:
+- **メッセージ編集 (`MESSAGE_EDIT`)**:
+
   ```json
   {
     "type": "MESSAGE_EDIT",
@@ -150,14 +156,16 @@ React Router v7 の UI ルート（`loader` / `action`）に加え、外部シ�
     }
   }
   ```
-* **メッセージ完全削除 (`MESSAGE_DELETE`)**:
+- **メッセージ完全削除 (`MESSAGE_DELETE`)**:
+
   ```json
   {
     "type": "MESSAGE_DELETE",
     "data": { "id": "msg_999", "channelId": "ch_123" }
   }
   ```
-* **リアクション更新 (`REACTION_UPDATE`)**:
+- **リアクション更新 (`REACTION_UPDATE`)**:
+
   ```json
   {
     "type": "REACTION_UPDATE",
@@ -167,7 +175,8 @@ React Router v7 の UI ルート（`loader` / `action`）に加え、外部シ�
     }
   }
   ```
-* **在室気配 ＆ 会話熱量状態 (`PRESENCE_STATE`)**:
+- **在室気配 ＆ 会話熱量状態 (`PRESENCE_STATE`)**:
+
   ```json
   {
     "type": "PRESENCE_STATE",
@@ -180,7 +189,8 @@ React Router v7 の UI ルート（`loader` / `action`）に加え、外部シ�
     }
   }
   ```
-* **チャンネル空気感トグル即時反映 (`SETTING_TOGGLE`)**:
+- **チャンネル空気感トグル即時反映 (`SETTING_TOGGLE`)**:
+
   ```json
   {
     "type": "SETTING_TOGGLE",
@@ -209,24 +219,50 @@ React Router の Server Loader / Action から Durable Objects を直接操作�
 export interface SpaceActorRPC {
   // メッセージ操作
   postMessage(data: InsertMessageDTO): Promise<{ id: string }>;
-  editMessage(messageId: string, ciphertext: string, iv: string): Promise<boolean>;
+  editMessage(
+    messageId: string,
+    ciphertext: string,
+    iv: string,
+  ): Promise<boolean>;
   deleteMessage(messageId: string): Promise<boolean>;
-  getRecentMessages(channelId: string, limit: number, cursor?: string): Promise<MessageEntity[]>;
+  getRecentMessages(
+    channelId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<MessageEntity[]>;
 
   // 空気感・設定変更
-  updateChannelSettings(channelId: string, settings: Partial<ChannelSettings>): Promise<boolean>;
+  updateChannelSettings(
+    channelId: string,
+    settings: Partial<ChannelSettings>,
+  ): Promise<boolean>;
   addCustomEmoji(emoji: InsertCustomEmojiDTO): Promise<{ id: string }>;
-  
+
   // メンバー・鍵管理
-  joinMember(userId: string, role: string, wrappedKey: string): Promise<boolean>;
-  rotateSpaceKey(newKeyEpoch: number, rewrappedKeys: Record<string, string>): Promise<boolean>;
+  joinMember(
+    userId: string,
+    role: string,
+    wrappedKey: string,
+  ): Promise<boolean>;
+  rotateSpaceKey(
+    newKeyEpoch: number,
+    rewrappedKeys: Record<string, string>,
+  ): Promise<boolean>;
 }
 
 // workers/actors/user.actor.ts
 export interface UserActorRPC {
   // 6桁PIN & ロックアウト・Pepper 保護管理
-  getPinChallenge(): Promise<{ pinSalt: string; isLocked: boolean; remainingAttempts: number }>;
-  setBackupVault(encryptedKey: string, salt: string, pinAuthHash: string): Promise<boolean>;
+  getPinChallenge(): Promise<{
+    pinSalt: string;
+    isLocked: boolean;
+    remainingAttempts: number;
+  }>;
+  setBackupVault(
+    encryptedKey: string,
+    salt: string,
+    pinAuthHash: string,
+  ): Promise<boolean>;
   unlockBackupVault(pinAuthHash: string): Promise<{
     isLocked: boolean;
     remainingAttempts: number;

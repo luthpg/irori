@@ -401,7 +401,7 @@ irori/
 | `profile`            | `userId`, `defaultName`, `defaultAvatar`, `statusLamp` (`free` \| `busy` \| `away`), `publicKey`, `encryptedBackupUserKey`, `pinSalt`, `failedPinAttempts`, `pinLockedUntil` | 公開鍵、PIN暗号化された鍵バックアップ、および総当たり防御用試行回数データを保持。        |
 | `joined_spaces`      | `spaceId`, `spaceName`, `themeColor`, `role`, `unreadCount`, `hasQuietActivity`, `notificationLevel`                                                                         | スペース一覧描画用の高速インデックス。                                                   |
 | `bookmarks`          | `id`, `spaceId`, `channelId`, `messageId`, `encryptedMessageSnapshot`, `encryptedPrivateNote`, `iv`, `tags`, `createdAt`                                                     | **自分専用ブックマーク＆非公開メモ**。個人の鍵で暗号化され、本人専用の DO 内にのみ存在。 |
-| `pending_deliveries` | `id`, `targetUserId`, `spaceId`, `channelId`, `ciphertext`, `iv`, `triggerType` (`time` \| `when_free`), `scheduledAt`, `createdAt`                                             | 予約送信および「相手が『ひま』になったら届ける」気配連動メッセージの待機キュー。         |
+| `pending_deliveries` | `id`, `targetUserId`, `spaceId`, `channelId`, `ciphertext`, `iv`, `triggerType` (`time` \| `when_free`), `scheduledAt`, `createdAt`                                          | 予約送信および「相手が『ひま』になったら届ける」気配連動メッセージの待機キュー。         |
 
 #### ② `SpaceActor` 内蔵 SQLite（スペース単位で完全分離されるデータ）
 

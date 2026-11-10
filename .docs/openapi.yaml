@@ -181,7 +181,7 @@ paths:
               properties:
                 name:
                   type: string
-                  description: ショートコード（例: hearth, tea）
+                  description: "ショートコード（例: hearth, tea）"
                   pattern: "^[a-zA-Z0-9_-]+$"
                 file:
                   type: string
@@ -381,7 +381,7 @@ components:
       properties:
         isReadVisible:
           type: boolean
-          description: 既読表示の可視化 (デフォルト: false)
+          description: "既読表示の可視化 (デフォルト: false)"
         isTypingVisible:
           type: boolean
           description: タイピング中表示

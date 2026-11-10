@@ -1,7 +1,12 @@
 .DS_Store
 .env
 /node_modules/
+dist/
 
 # React Router
 /.react-router/
 /build/
+
+# workers
+.wrangler/
+.dev.vars
