@@ -13,6 +13,10 @@
     "seed:test-space": "node --experimental-strip-types scripts/seed-test-space.ts",
     "test": "vitest run",
     "check": "biome check --write",
+    "check:ci": "biome check .",
+    "check:knowledge": "tsx scripts/ai-knowledge/check-knowledge-refs.ts",
+    "check:doc-sync": "tsx scripts/ai-knowledge/check-doc-sync.ts",
+    "verify": "pnpm run typecheck && pnpm run check:ci && pnpm run check:knowledge && pnpm run check:doc-sync && pnpm run test && pnpm run build",
     "deploy": "pnpm run build && wrangler deploy"
   },
   "dependencies": {
@@ -34,6 +38,7 @@
     "@types/react-dom": "^19.3.0",
     "jsdom": "^31.0.0",
     "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.7",
     "vitest": "^5.1.0",

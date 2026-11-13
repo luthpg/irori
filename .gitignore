@@ -10,3 +10,5 @@ dist/
 # workers
 .wrangler/
 .dev.vars
+
+.local

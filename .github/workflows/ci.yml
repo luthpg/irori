@@ -1,0 +1,80 @@
+name: CI Verification & HITL Governance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-lint:
+    name: Lint GitHub Workflows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint via reviewdog
+        uses: reviewdog/action-actionlint@v1.77.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: local
+          fail_level: error
+
+  verify:
+    name: Typecheck, Lint, Knowledge, Doc-Sync, Test & Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4.3.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5.0.0
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting and lint (Biome)
+        run: pnpm run check:ci
+
+      - name: Verify AI knowledge references
+        run: pnpm run check:knowledge
+
+      - name: Verify doc-sync for PR
+        if: github.event_name == 'pull_request'
+        run: pnpm exec tsx scripts/ai-knowledge/check-doc-sync.ts --base "origin/${{ github.event.pull_request.base.ref }}" --ci
+
+      - name: Verify doc-sync for push
+        if: github.event_name == 'push'
+        run: pnpm exec tsx scripts/ai-knowledge/check-doc-sync.ts --base "HEAD~1" --ci --allow-missing-base
+
+      - name: Run typegen and TypeScript check
+        run: pnpm run typecheck
+
+      - name: Run Vitest suite
+        run: pnpm run test
+
+      - name: Build production bundle
+        run: pnpm run build

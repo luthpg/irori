@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "project": "irori",
+  "repoType": "single",
+  "hasFrontend": true,
+  "packageManager": "pnpm",
+  "knowledge": {
+    "scanDirs": [".ai", ".agents/skills/project-guardrails"],
+    "scanFiles": ["GEMINI.md", "CLAUDE.md"],
+    "excludeDirs": [
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      ".react-router",
+      ".wrangler",
+      ".local"
+    ],
+    "rootPrefixes": [
+      "app/",
+      "workers/",
+      "scripts/",
+      "tests/",
+      "public/",
+      ".docs/",
+      ".ai/",
+      ".github/",
+      ".agents/"
+    ],
+    "rootFiles": [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "biome.json",
+      "tsconfig.json",
+      "wrangler.jsonc",
+      "vite.config.ts",
+      "vitest.config.ts",
+      "react-router.config.ts",
+      "worker-configuration.d.ts",
+      "GEMINI.md",
+      "CLAUDE.md",
+      "README.md",
+      ".gitignore"
+    ]
+  },
+  "docSyncRules": [
+    {
+      "id": "workers-and-schemas",
+      "description": "Durable Objects, SQLite schemas, RPC, bindings, and Cloudflare Worker entrypoints",
+      "severity": "error",
+      "codePatterns": ["wrangler.jsonc", "workers/**", "app/lib/schemas/**"],
+      "docPatterns": [
+        ".docs/plan.api.md",
+        ".docs/openapi.yaml",
+        ".docs/requirements.md",
+        ".ai/architecture.md",
+        ".ai/domain.md",
+        ".ai/invariants.md",
+        ".ai/decisions.md"
+      ]
+    },
+    {
+      "id": "auth-and-crypto",
+      "description": "Authentication, session HMAC, OAuth PKCE, E2EE key management, and rate limits",
+      "severity": "error",
+      "codePatterns": [
+        "app/lib/auth/**",
+        "app/lib/crypto/**",
+        "app/routes/auth.*.ts",
+        "app/routes/restore-key.tsx",
+        "workers/rate-limit.server.ts"
+      ],
+      "docPatterns": [
+        ".docs/requirements.md",
+        ".docs/plan.api.md",
+        ".ai/invariants.md",
+        ".ai/domain.md",
+        ".ai/pitfalls/backend-and-data.md",
+        ".ai/decisions.md"
+      ]
+    },
+    {
+      "id": "routes-and-api",
+      "description": "React Router route table and HTTP/WebSocket route handlers",
+      "severity": "error",
+      "codePatterns": [
+        "app/routes.ts",
+        "app/routes/api.*.ts",
+        "app/hooks/useSpaceWebSocket.ts"
+      ],
+      "docPatterns": [
+        ".docs/plan.api.md",
+        ".docs/openapi.yaml",
+        ".ai/architecture.md",
+        ".ai/patterns.md",
+        ".ai/pitfalls/ui-and-frontend.md"
+      ]
+    },
+    {
+      "id": "ui-and-design-system",
+      "description": "UI routes, chat components, theme CSS, BudouX/ASMR hooks, and keyboard navigation",
+      "severity": "warn",
+      "codePatterns": [
+        "app/root.tsx",
+        "app/app.css",
+        "app/components/**",
+        "app/hooks/**",
+        "app/lib/keyboard.ts",
+        "app/routes/*.tsx"
+      ],
+      "docPatterns": [
+        ".docs/DESIGN.md",
+        ".docs/plan.components.md",
+        ".ai/patterns.md",
+        ".ai/pitfalls/ui-and-frontend.md"
+      ]
+    },
+    {
+      "id": "tooling-testing-and-ci",
+      "description": "Tests, build/lint config, scripts, and CI/PR governance",
+      "severity": "error",
+      "codePatterns": [
+        "package.json",
+        "biome.json",
+        "tsconfig.json",
+        "vite.config.ts",
+        "vitest.config.ts",
+        "react-router.config.ts",
+        ".github/**",
+        "scripts/**",
+        "tests/**"
+      ],
+      "docPatterns": [
+        "GEMINI.md",
+        "CLAUDE.md",
+        ".ai/testing.md",
+        ".ai/architecture.md",
+        ".ai/invariants.md",
+        ".ai/workflows/*.md",
+        ".ai/pitfalls/*.md"
+      ]
+    }
+  ]
+}
